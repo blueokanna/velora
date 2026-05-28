@@ -14,9 +14,13 @@ pub struct BookSource {
     pub search_name: String,
     pub search_author: String,
     pub search_book_url: String,
+    #[serde(default)]
+    pub search_cover: String,
     pub book_info_name: String,
     pub book_info_author: String,
     pub book_info_intro: String,
+    #[serde(default)]
+    pub book_info_cover: String,
     pub book_info_toc_url: String,
     pub toc_list: String,
     pub toc_name: String,
@@ -29,6 +33,7 @@ pub struct SearchResult {
     pub name: String,
     pub author: String,
     pub book_url: String,
+    pub cover_url: String,
     pub source_name: String,
 }
 
@@ -37,6 +42,7 @@ pub struct BookDetail {
     pub name: String,
     pub author: String,
     pub intro: String,
+    pub cover_url: String,
     pub toc_url: String,
 }
 
@@ -74,6 +80,16 @@ fn select_attr(doc: &Html, sel: &str, attr: &str) -> String {
         .unwrap_or_default()
 }
 
+fn select_resource_url(doc: &Html, sel: &str) -> String {
+    for attr in ["src", "data-src", "data-original", "data-lazy-src", "href", "content"] {
+        let value = select_attr(doc, sel, attr);
+        if !value.is_empty() {
+            return value;
+        }
+    }
+    String::new()
+}
+
 fn absolute_url(base: &str, href: &str) -> String {
     if href.is_empty() {
         return String::new();
@@ -105,6 +121,8 @@ pub fn source_search(source_json: String, keyword: String) -> Result<Vec<SearchR
         let author = select_text(&sub, &src.search_author);
         let book_url_raw = select_attr(&sub, &src.search_book_url, "href");
         let book_url = absolute_url(&resp.url, &book_url_raw);
+        let cover_raw = select_resource_url(&sub, &src.search_cover);
+        let cover_url = absolute_url(&resp.url, &cover_raw);
         if name.is_empty() || book_url.is_empty() {
             continue;
         }
@@ -112,6 +130,7 @@ pub fn source_search(source_json: String, keyword: String) -> Result<Vec<SearchR
             name,
             author,
             book_url,
+            cover_url,
             source_name: src.name.clone(),
         });
     }
@@ -126,6 +145,8 @@ pub fn source_book_detail(source_json: String, book_url: String) -> Result<BookD
     let name = select_text(&doc, &src.book_info_name);
     let author = select_text(&doc, &src.book_info_author);
     let intro = select_text(&doc, &src.book_info_intro);
+    let cover_raw = select_resource_url(&doc, &src.book_info_cover);
+    let cover_url = absolute_url(&resp.url, &cover_raw);
     let toc_raw = select_attr(&doc, &src.book_info_toc_url, "href");
     let toc_url = if toc_raw.is_empty() {
         book_url.clone()
@@ -136,6 +157,7 @@ pub fn source_book_detail(source_json: String, book_url: String) -> Result<BookD
         name,
         author,
         intro,
+        cover_url,
         toc_url,
     })
 }

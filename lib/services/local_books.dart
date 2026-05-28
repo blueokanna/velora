@@ -1,9 +1,12 @@
 import 'dart:io';
 
 import '../features/reader/book_meta_codec.dart';
+import '../services/book_metadata_lookup.dart';
 import '../services/document_file.dart';
 import '../src/rust/api/book_file.dart' as book_file;
 import '../src/rust/api/storage.dart' as rs;
+
+const _metadataLookup = BookMetadataLookup();
 
 class LocalBookSourceInfo {
   final String name;
@@ -70,6 +73,13 @@ Future<rs.BookshelfEntry?> refreshLocalBookEntry(
   if (!shouldRefresh) return null;
 
   final meta = await _openLocalBookMeta(book, source);
+  final title = meta.title.trim().isEmpty ? source.name : meta.title;
+  final online = await _lookupLocalMetadata(
+    title,
+    author: meta.author,
+    cover: meta.coverDataUrl,
+    force: force,
+  );
   final encoded = encodeBookMeta(
     meta,
     sourceSizeBytes: source.sizeBytes,
@@ -77,12 +87,12 @@ Future<rs.BookshelfEntry?> refreshLocalBookEntry(
   );
   final next = rs.BookshelfEntry(
     id: book.id,
-    title: meta.title.trim().isEmpty ? source.name : meta.title,
-    author: meta.author,
+    title: _preferText(title, online?.title),
+    author: _preferText(meta.author, online?.author),
     kind: isDocumentUriBook(book) ? '${meta.format}_uri' : meta.format,
     pathOrUrl: book.pathOrUrl,
     bookMetaJson: encoded,
-    cover: meta.coverDataUrl,
+    cover: _preferText(meta.coverDataUrl ?? '', online?.coverUrl),
     lastChapter: book.lastChapter,
     lastOffset: book.lastOffset,
     updatedAt: signatureChanged
@@ -94,6 +104,53 @@ Future<rs.BookshelfEntry?> refreshLocalBookEntry(
   );
   return next == book ? null : next;
 }
+
+Future<rs.BookshelfEntry> enrichBookEntryMetadata(
+  rs.BookshelfEntry entry, {
+  bool force = false,
+}) async {
+  final needsLookup =
+      force || entry.author.trim().isEmpty || _empty(entry.cover);
+  if (!needsLookup) return entry;
+  final online = entry.kind == 'online'
+      ? await _metadataLookup.lookupByUrl(entry.pathOrUrl)
+      : await _metadataLookup.lookupByTitle(entry.title, author: entry.author);
+  if (online == null) return entry;
+  return rs.BookshelfEntry(
+    id: entry.id,
+    title: _preferText(entry.title, online.title),
+    author: _preferText(entry.author, online.author),
+    kind: entry.kind,
+    pathOrUrl: entry.pathOrUrl,
+    bookMetaJson: entry.bookMetaJson,
+    cover: _preferText(entry.cover ?? '', online.coverUrl),
+    lastChapter: entry.lastChapter,
+    lastOffset: entry.lastOffset,
+    updatedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    sourceName: entry.sourceName ?? online.sourceName,
+    sourceJson: entry.sourceJson,
+    tocUrl: entry.tocUrl,
+  );
+}
+
+Future<BookMetadata?> _lookupLocalMetadata(
+  String title, {
+  required String author,
+  required String? cover,
+  required bool force,
+}) async {
+  if (!force && author.trim().isNotEmpty && !_empty(cover)) return null;
+  return _metadataLookup.lookupByTitle(title, author: author);
+}
+
+String _preferText(String current, String? candidate) {
+  final normalized = current.trim();
+  final next = candidate?.trim() ?? '';
+  if (normalized.isNotEmpty && normalized != '未命名') return normalized;
+  return next.isEmpty ? normalized : next;
+}
+
+bool _empty(String? value) => value == null || value.trim().isEmpty;
 
 Future<book_file.BookMeta> _openLocalBookMeta(
   rs.BookshelfEntry book,

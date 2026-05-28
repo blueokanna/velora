@@ -874,13 +874,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BookDetail dco_decode_book_detail(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 4)
-      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
     return BookDetail(
       name: dco_decode_String(arr[0]),
       author: dco_decode_String(arr[1]),
       intro: dco_decode_String(arr[2]),
-      tocUrl: dco_decode_String(arr[3]),
+      coverUrl: dco_decode_String(arr[3]),
+      tocUrl: dco_decode_String(arr[4]),
     );
   }
 
@@ -1050,13 +1051,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   SearchResult dco_decode_search_result(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 4)
-      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
     return SearchResult(
       name: dco_decode_String(arr[0]),
       author: dco_decode_String(arr[1]),
       bookUrl: dco_decode_String(arr[2]),
-      sourceName: dco_decode_String(arr[3]),
+      coverUrl: dco_decode_String(arr[3]),
+      sourceName: dco_decode_String(arr[4]),
     );
   }
 
@@ -1146,11 +1148,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_name = sse_decode_String(deserializer);
     var var_author = sse_decode_String(deserializer);
     var var_intro = sse_decode_String(deserializer);
+    var var_coverUrl = sse_decode_String(deserializer);
     var var_tocUrl = sse_decode_String(deserializer);
     return BookDetail(
       name: var_name,
       author: var_author,
       intro: var_intro,
+      coverUrl: var_coverUrl,
       tocUrl: var_tocUrl,
     );
   }
@@ -1390,11 +1394,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_name = sse_decode_String(deserializer);
     var var_author = sse_decode_String(deserializer);
     var var_bookUrl = sse_decode_String(deserializer);
+    var var_coverUrl = sse_decode_String(deserializer);
     var var_sourceName = sse_decode_String(deserializer);
     return SearchResult(
       name: var_name,
       author: var_author,
       bookUrl: var_bookUrl,
+      coverUrl: var_coverUrl,
       sourceName: var_sourceName,
     );
   }
@@ -1494,6 +1500,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.name, serializer);
     sse_encode_String(self.author, serializer);
     sse_encode_String(self.intro, serializer);
+    sse_encode_String(self.coverUrl, serializer);
     sse_encode_String(self.tocUrl, serializer);
   }
 
@@ -1702,6 +1709,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.name, serializer);
     sse_encode_String(self.author, serializer);
     sse_encode_String(self.bookUrl, serializer);
+    sse_encode_String(self.coverUrl, serializer);
     sse_encode_String(self.sourceName, serializer);
   }
 

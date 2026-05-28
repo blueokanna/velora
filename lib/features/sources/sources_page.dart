@@ -19,22 +19,31 @@ class SourcesPage extends ConsumerWidget {
           maxLines: 14,
           decoration: const InputDecoration(
             border: OutlineInputBorder(),
-            hintText: '[{...}, {...}]',
+            hintText: 'JSON, https://example.com/sources.json, yuedu://...',
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(AppLocalizations.of(context).cancel)),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(AppLocalizations.of(context).import)),
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(AppLocalizations.of(context).cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(AppLocalizations.of(context).import),
+          ),
         ],
       ),
     );
     if (ok == true) {
       try {
-        await ref.read(sourcesProvider.notifier).importJson(controller.text);
+        await ref
+            .read(sourcesProvider.notifier)
+            .importTextOrUrl(controller.text);
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('$e')));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('$e')));
         }
       }
     }
@@ -62,16 +71,22 @@ class SourcesPage extends ConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.cloud_outlined,
-                        size: 80,
-                        color: Theme.of(context).colorScheme.primary),
+                    Icon(
+                      Icons.cloud_outlined,
+                      size: 80,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     const SizedBox(height: 12),
-                    Text(l10n.noSources,
-                        style: Theme.of(context).textTheme.titleMedium),
+                    Text(
+                      l10n.noSources,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                     const SizedBox(height: 8),
-                    Text(l10n.noSourcesSub,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium),
+                    Text(
+                      l10n.noSourcesSub,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                     const SizedBox(height: 16),
                     FilledButton.icon(
                       onPressed: () => _import(context, ref),
@@ -89,7 +104,11 @@ class SourcesPage extends ConsumerWidget {
                 final src = list[i];
                 return SwitchListTile(
                   title: Text(src.name),
-                  subtitle: Text(src.url, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(
+                    src.url,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   value: src.enabled,
                   onChanged: (v) =>
                       ref.read(sourcesProvider.notifier).toggle(src.url, v),

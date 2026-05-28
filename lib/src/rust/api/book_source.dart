@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `absolute_url`, `select_attr`, `select_text`, `urlencoding_lite`
+// These functions are ignored because they are not marked as `pub`: `absolute_url`, `select_attr`, `select_resource_url`, `select_text`, `urlencoding_lite`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BookSource`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`
 
@@ -46,18 +46,24 @@ class BookDetail {
   final String name;
   final String author;
   final String intro;
+  final String coverUrl;
   final String tocUrl;
 
   const BookDetail({
     required this.name,
     required this.author,
     required this.intro,
+    required this.coverUrl,
     required this.tocUrl,
   });
 
   @override
   int get hashCode =>
-      name.hashCode ^ author.hashCode ^ intro.hashCode ^ tocUrl.hashCode;
+      name.hashCode ^
+      author.hashCode ^
+      intro.hashCode ^
+      coverUrl.hashCode ^
+      tocUrl.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -67,6 +73,7 @@ class BookDetail {
           name == other.name &&
           author == other.author &&
           intro == other.intro &&
+          coverUrl == other.coverUrl &&
           tocUrl == other.tocUrl;
 }
 
@@ -74,18 +81,24 @@ class SearchResult {
   final String name;
   final String author;
   final String bookUrl;
+  final String coverUrl;
   final String sourceName;
 
   const SearchResult({
     required this.name,
     required this.author,
     required this.bookUrl,
+    required this.coverUrl,
     required this.sourceName,
   });
 
   @override
   int get hashCode =>
-      name.hashCode ^ author.hashCode ^ bookUrl.hashCode ^ sourceName.hashCode;
+      name.hashCode ^
+      author.hashCode ^
+      bookUrl.hashCode ^
+      coverUrl.hashCode ^
+      sourceName.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -95,6 +108,7 @@ class SearchResult {
           name == other.name &&
           author == other.author &&
           bookUrl == other.bookUrl &&
+          coverUrl == other.coverUrl &&
           sourceName == other.sourceName;
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app_keys.dart';
 import '../../l10n/app_localizations.dart';
@@ -56,11 +57,11 @@ class SettingsPage extends ConsumerWidget {
                 onTap: () => _pickLocale(context, ref),
               ),
               const SizedBox(height: 18),
-              AboutListTile(
-                icon: const Icon(Icons.info_outline),
-                applicationName: 'Velora',
-                applicationVersion: '1.0.0',
-                applicationLegalese: '2026 Velora',
+              _SettingsTile(
+                icon: Icons.info_outline,
+                title: '关于 Velora',
+                subtitle: 'Velora 1.0.0+1 · AGPL-3.0 · blueokanna',
+                onTap: () => _showVeloraAbout(context),
               ),
             ],
           ),
@@ -169,6 +170,68 @@ class SettingsPage extends ConsumerWidget {
               ),
             )
             .toList(),
+      ),
+    );
+  }
+
+  Future<void> _showVeloraAbout(BuildContext context) async {
+    final releaseUrl = Uri.parse(
+      'https://github.com/blueokanna/velora/releases/latest',
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Velora'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.asset(
+                      'assets/light.png',
+                      width: 88,
+                      height: 88,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text('版本：1.0.0+1'),
+                const SizedBox(height: 8),
+                const Text('作者：blueokanna'),
+                const SizedBox(height: 8),
+                const Text('许可证：GNU Affero General Public License v3.0'),
+                const SizedBox(height: 8),
+                const SelectableText(
+                  '更新：https://github.com/blueokanna/velora/releases/latest',
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Velora 仅用于阅读和管理用户依法享有授权或合法权利的内容，禁止用于任何侵权抓取、聚合、传播、引流或变现行为。',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(AppLocalizations.of(context).cancel),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              await launchUrl(releaseUrl, mode: LaunchMode.externalApplication);
+            },
+            icon: const Icon(Icons.open_in_new),
+            label: const Text('检查更新'),
+          ),
+        ],
       ),
     );
   }

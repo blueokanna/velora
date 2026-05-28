@@ -875,11 +875,13 @@ impl SseDecode for crate::api::book_source::BookDetail {
         let mut var_name = <String>::sse_decode(deserializer);
         let mut var_author = <String>::sse_decode(deserializer);
         let mut var_intro = <String>::sse_decode(deserializer);
+        let mut var_coverUrl = <String>::sse_decode(deserializer);
         let mut var_tocUrl = <String>::sse_decode(deserializer);
         return crate::api::book_source::BookDetail {
             name: var_name,
             author: var_author,
             intro: var_intro,
+            cover_url: var_coverUrl,
             toc_url: var_tocUrl,
         };
     }
@@ -1124,11 +1126,13 @@ impl SseDecode for crate::api::book_source::SearchResult {
         let mut var_name = <String>::sse_decode(deserializer);
         let mut var_author = <String>::sse_decode(deserializer);
         let mut var_bookUrl = <String>::sse_decode(deserializer);
+        let mut var_coverUrl = <String>::sse_decode(deserializer);
         let mut var_sourceName = <String>::sse_decode(deserializer);
         return crate::api::book_source::SearchResult {
             name: var_name,
             author: var_author,
             book_url: var_bookUrl,
+            cover_url: var_coverUrl,
             source_name: var_sourceName,
         };
     }
@@ -1294,6 +1298,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::book_source::BookDetail {
             self.name.into_into_dart().into_dart(),
             self.author.into_into_dart().into_dart(),
             self.intro.into_into_dart().into_dart(),
+            self.cover_url.into_into_dart().into_dart(),
             self.toc_url.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -1442,6 +1447,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::book_source::SearchResult {
             self.name.into_into_dart().into_dart(),
             self.author.into_into_dart().into_dart(),
             self.book_url.into_into_dart().into_dart(),
+            self.cover_url.into_into_dart().into_dart(),
             self.source_name.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -1533,6 +1539,7 @@ impl SseEncode for crate::api::book_source::BookDetail {
         <String>::sse_encode(self.name, serializer);
         <String>::sse_encode(self.author, serializer);
         <String>::sse_encode(self.intro, serializer);
+        <String>::sse_encode(self.cover_url, serializer);
         <String>::sse_encode(self.toc_url, serializer);
     }
 }
@@ -1708,6 +1715,7 @@ impl SseEncode for crate::api::book_source::SearchResult {
         <String>::sse_encode(self.name, serializer);
         <String>::sse_encode(self.author, serializer);
         <String>::sse_encode(self.book_url, serializer);
+        <String>::sse_encode(self.cover_url, serializer);
         <String>::sse_encode(self.source_name, serializer);
     }
 }

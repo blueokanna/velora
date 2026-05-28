@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../services/local_books.dart';
 import '../../src/rust/api/book_source.dart' as bs;
 import '../../src/rust/api/storage.dart' as rs;
 import '../../state/bookshelf.dart';
@@ -38,8 +39,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
             keyword: keyword,
           );
           all.addAll(list);
-        } catch (_) {
-        }
+        } catch (_) {}
       }
       setState(() => _results = all);
     } catch (e) {
@@ -55,31 +55,46 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       _error = null;
     });
     try {
-      final source = ref.read(sourcesProvider).firstWhere((item) => item.name == result.sourceName);
+      final source = ref
+          .read(sourcesProvider)
+          .firstWhere((item) => item.name == result.sourceName);
       final sourceJson = source.toJsonString();
-      final detail = bs.sourceBookDetail(sourceJson: sourceJson, bookUrl: result.bookUrl);
+      final detail = bs.sourceBookDetail(
+        sourceJson: sourceJson,
+        bookUrl: result.bookUrl,
+      );
       final toc = bs.sourceToc(sourceJson: sourceJson, tocUrl: detail.tocUrl);
       if (toc.isEmpty) throw StateError('目录为空');
       final title = detail.name.trim().isEmpty ? result.name : detail.name;
-      final author = detail.author.trim().isEmpty ? result.author : detail.author;
-      final entry = rs.BookshelfEntry(
-        id: 'online:${result.bookUrl}',
-        title: title,
-        author: author,
-        kind: 'online',
-        pathOrUrl: result.bookUrl,
-        bookMetaJson: null,
-        cover: null,
-        lastChapter: 0,
-        lastOffset: BigInt.zero,
-        updatedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        sourceName: result.sourceName,
-        sourceJson: sourceJson,
-        tocUrl: detail.tocUrl,
+      final author = detail.author.trim().isEmpty
+          ? result.author
+          : detail.author;
+      final entry = await enrichBookEntryMetadata(
+        rs.BookshelfEntry(
+          id: 'online:${result.bookUrl}',
+          title: title,
+          author: author,
+          kind: 'online',
+          pathOrUrl: result.bookUrl,
+          bookMetaJson: null,
+          cover: detail.coverUrl.trim().isEmpty
+              ? result.coverUrl
+              : detail.coverUrl,
+          lastChapter: 0,
+          lastOffset: BigInt.zero,
+          updatedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          sourceName: result.sourceName,
+          sourceJson: sourceJson,
+          tocUrl: detail.tocUrl,
+        ),
       );
       await ref.read(bookshelfProvider.notifier).upsert(entry);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${AppLocalizations.of(context).imported}: $title')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${AppLocalizations.of(context).imported}: $title'),
+          ),
+        );
       }
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
@@ -122,26 +137,65 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!))
-              : _results.isEmpty
-                  ? Center(
-                      child: Text(l10n.noResults,
-                          style: Theme.of(context).textTheme.bodyLarge),
-                    )
-                  : ListView.separated(
-                      itemCount: _results.length,
-                      separatorBuilder: (context, index) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final result = _results[index];
-                        return ListTile(
-                          leading: const Icon(Icons.menu_book_outlined),
-                          title: Text(result.name),
-                          subtitle: Text('${result.author} · ${result.sourceName}'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => _addOnlineBook(result),
-                        );
-                      },
-                    ),
+          ? Center(child: Text(_error!))
+          : _results.isEmpty
+          ? Center(
+              child: Text(
+                l10n.noResults,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            )
+          : ListView.separated(
+              itemCount: _results.length,
+              separatorBuilder: (context, index) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final result = _results[index];
+                return ListTile(
+                  leading: _SearchResultCover(url: result.coverUrl),
+                  title: Text(result.name),
+                  subtitle: Text('${result.author} · ${result.sourceName}'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _addOnlineBook(result),
+                );
+              },
+            ),
+    );
+  }
+}
+
+class _SearchResultCover extends StatelessWidget {
+  final String url;
+
+  const _SearchResultCover({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final value = url.trim();
+    final fallback = Container(
+      width: 42,
+      height: 56,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Icon(
+        Icons.menu_book_outlined,
+        color: colorScheme.onSurfaceVariant,
+      ),
+    );
+    if (!value.startsWith('http://') && !value.startsWith('https://')) {
+      return fallback;
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Image.network(
+        value,
+        width: 42,
+        height: 56,
+        fit: BoxFit.cover,
+        errorBuilder: (_, error, stackTrace) => fallback,
+      ),
     );
   }
 }

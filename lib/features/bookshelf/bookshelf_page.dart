@@ -106,24 +106,26 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
     final stat = await File(path).stat();
     final meta = book_file.openBookFile(path: path);
     final entry = _mergeImportedEntry(
-      rs.BookshelfEntry(
-        id: 'local://${meta.locator}',
-        title: meta.title,
-        author: meta.author,
-        kind: meta.format,
-        pathOrUrl: meta.locator,
-        bookMetaJson: encodeBookMeta(
-          meta,
-          sourceSizeBytes: stat.size,
-          sourceModifiedAtMillis: stat.modified.millisecondsSinceEpoch,
+      await enrichBookEntryMetadata(
+        rs.BookshelfEntry(
+          id: 'local://${meta.locator}',
+          title: meta.title,
+          author: meta.author,
+          kind: meta.format,
+          pathOrUrl: meta.locator,
+          bookMetaJson: encodeBookMeta(
+            meta,
+            sourceSizeBytes: stat.size,
+            sourceModifiedAtMillis: stat.modified.millisecondsSinceEpoch,
+          ),
+          cover: meta.coverDataUrl,
+          lastChapter: 0,
+          lastOffset: BigInt.zero,
+          updatedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          sourceName: null,
+          sourceJson: null,
+          tocUrl: null,
         ),
-        cover: meta.coverDataUrl,
-        lastChapter: 0,
-        lastOffset: BigInt.zero,
-        updatedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        sourceName: null,
-        sourceJson: null,
-        tocUrl: null,
       ),
     );
     await ref.read(bookshelfProvider.notifier).upsert(entry);
@@ -147,24 +149,26 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
       bytes: bytes,
     );
     final entry = _mergeImportedEntry(
-      rs.BookshelfEntry(
-        id: 'local-uri:${doc.uri}',
-        title: meta.title,
-        author: meta.author,
-        kind: '${meta.format}_uri',
-        pathOrUrl: doc.uri,
-        bookMetaJson: encodeBookMeta(
-          meta,
-          sourceSizeBytes: doc.size,
-          sourceModifiedAtMillis: doc.lastModifiedMillis,
+      await enrichBookEntryMetadata(
+        rs.BookshelfEntry(
+          id: 'local-uri:${doc.uri}',
+          title: meta.title,
+          author: meta.author,
+          kind: '${meta.format}_uri',
+          pathOrUrl: doc.uri,
+          bookMetaJson: encodeBookMeta(
+            meta,
+            sourceSizeBytes: doc.size,
+            sourceModifiedAtMillis: doc.lastModifiedMillis,
+          ),
+          cover: meta.coverDataUrl,
+          lastChapter: 0,
+          lastOffset: BigInt.zero,
+          updatedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          sourceName: null,
+          sourceJson: null,
+          tocUrl: null,
         ),
-        cover: meta.coverDataUrl,
-        lastChapter: 0,
-        lastOffset: BigInt.zero,
-        updatedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        sourceName: null,
-        sourceJson: null,
-        tocUrl: null,
       ),
     );
     await ref.read(bookshelfProvider.notifier).upsert(entry);
@@ -580,7 +584,6 @@ class _BookCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final meta = decodeBookMeta(book.bookMetaJson);
-    final coverBytes = _decodeCover(book.cover);
     final chips = <String>[
       _formatLabel(meta?.format ?? book.kind),
       if (meta != null && meta.sizeBytes > BigInt.zero)
@@ -607,21 +610,11 @@ class _BookCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    if (coverBytes != null)
-                      Image.memory(
-                        coverBytes,
-                        fit: BoxFit.cover,
-                        filterQuality: FilterQuality.medium,
-                        errorBuilder: (_, error, stackTrace) => _FallbackCover(
-                          title: book.title,
-                          colorScheme: colorScheme,
-                        ),
-                      )
-                    else
-                      _FallbackCover(
-                        title: book.title,
-                        colorScheme: colorScheme,
-                      ),
+                    _BookCover(
+                      raw: book.cover,
+                      title: book.title,
+                      colorScheme: colorScheme,
+                    ),
                     if (selectionMode || selected)
                       Positioned(
                         top: 10,
@@ -704,6 +697,44 @@ class _BookCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _BookCover extends StatelessWidget {
+  final String? raw;
+  final String title;
+  final ColorScheme colorScheme;
+
+  const _BookCover({
+    required this.raw,
+    required this.title,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final value = raw?.trim() ?? '';
+    final fallback = _FallbackCover(title: title, colorScheme: colorScheme);
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return Image.network(
+        value,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, error, stackTrace) => fallback,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return fallback;
+        },
+      );
+    }
+    final coverBytes = _decodeCover(value);
+    if (coverBytes == null) return fallback;
+    return Image.memory(
+      coverBytes,
+      fit: BoxFit.cover,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, error, stackTrace) => fallback,
     );
   }
 }

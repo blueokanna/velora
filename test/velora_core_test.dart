@@ -100,6 +100,49 @@ void main() {
     expect(notifier.state.single.toJsonString(), contains('content_selector'));
   });
 
+  test('SourcesNotifier maps Legado rule fields and cover selectors', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final notifier = SourcesNotifier(prefs);
+
+    await notifier.importJson(
+      jsonEncode({
+        'bookSourceName': '社区书源',
+        'bookSourceUrl': 'https://example.org',
+        'enabled': true,
+        'searchUrl': 'https://example.org/search?q={key}',
+        'ruleSearch': {
+          'bookList': '.result',
+          'name': '.title',
+          'author': '.author',
+          'bookUrl': 'a',
+          'coverUrl': 'img.cover',
+        },
+        'ruleBookInfo': {
+          'name': 'h1',
+          'author': '.book-author',
+          'intro': '.intro',
+          'coverUrl': '.cover img',
+          'tocUrl': '.toc a',
+        },
+        'ruleToc': {
+          'chapterList': '.chapter',
+          'chapterName': 'a',
+          'chapterUrl': 'a',
+        },
+        'ruleContent': {'content': '#content'},
+      }),
+    );
+
+    final source = notifier.state.single;
+    expect(source.name, '社区书源');
+    expect(source.url, 'https://example.org');
+    expect(source.searchList, '.result');
+    expect(source.searchCover, 'img.cover');
+    expect(source.bookInfoCover, '.cover img');
+    expect(source.contentSelector, '#content');
+  });
+
   test('SettingsNotifier persists core reading settings', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
