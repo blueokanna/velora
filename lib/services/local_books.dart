@@ -22,7 +22,8 @@ bool isDocumentUriBook(rs.BookshelfEntry book) {
 }
 
 bool isManagedOfflineBook(rs.BookshelfEntry book) {
-  return book.kind != 'online' && (book.sourceJson == null || book.sourceJson!.isEmpty);
+  return book.kind != 'online' &&
+      (book.sourceJson == null || book.sourceJson!.isEmpty);
 }
 
 Future<LocalBookSourceInfo?> describeLocalBook(rs.BookshelfEntry book) async {

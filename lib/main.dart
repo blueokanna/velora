@@ -53,9 +53,7 @@ Future<void> bootstrapVeloraApp({
 
   runApp(
     ProviderScope(
-      overrides: [
-        sharedPreferencesProvider.overrideWithValue(context.prefs),
-      ],
+      overrides: [sharedPreferencesProvider.overrideWithValue(context.prefs)],
       child: const VeloraApp(),
     ),
   );
@@ -73,10 +71,9 @@ Future<VeloraBootstrapContext> prepareVeloraBootstrap({
     await RustLib.init(externalLibrary: externalLibrary);
   }
 
-  final docsPath =
-      resolveDocsPath != null
-          ? await resolveDocsPath()
-          : (await getApplicationDocumentsDirectory()).path;
+  final docsPath = resolveDocsPath != null
+      ? await resolveDocsPath()
+      : (await getApplicationDocumentsDirectory()).path;
   if (initializeStorage != null) {
     initializeStorage(docsPath);
   } else {

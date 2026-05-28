@@ -48,7 +48,8 @@ book_file.BookMeta? decodeBookMeta(String? raw) {
 }
 
 BookSourceSignature decodeBookSourceSignature(String? raw) {
-  return decodeBookMetaRecord(raw)?.sourceSignature ?? const BookSourceSignature();
+  return decodeBookMetaRecord(raw)?.sourceSignature ??
+      const BookSourceSignature();
 }
 
 DecodedBookMeta? decodeBookMetaRecord(String? raw) {
@@ -57,9 +58,7 @@ DecodedBookMeta? decodeBookMetaRecord(String? raw) {
     final map = jsonDecode(raw);
     if (map is! Map<String, dynamic>) return null;
     final chapters = ((map['chapters'] as List<dynamic>?) ?? const <dynamic>[])
-        .map(
-          (item) => item as Map<String, dynamic>,
-        )
+        .map((item) => item as Map<String, dynamic>)
         .map(
           (item) => book_file.BookChapter(
             title: (item['title'] as String?) ?? '',

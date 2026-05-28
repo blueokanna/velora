@@ -189,7 +189,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     book_file.BookMeta? meta = decodeBookMeta(syncedBook.bookMetaJson);
     if (local_books.isDocumentUriBook(syncedBook)) {
       final bytes =
-          _bookBytes ?? await DocumentFileChannel.readBytes(syncedBook.pathOrUrl);
+          _bookBytes ??
+          await DocumentFileChannel.readBytes(syncedBook.pathOrUrl);
       _bookBytes = bytes;
       _updateLoadingProgress(0.24, detail: syncedBook.title);
       meta ??= book_file.openBookBytes(
@@ -212,7 +213,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     setState(() {
       _book = syncedBook;
       _chapters = chapters;
-      _chapterIndex = syncedBook.lastChapter.clamp(0, chapters.length - 1).toInt();
+      _chapterIndex = syncedBook.lastChapter
+          .clamp(0, chapters.length - 1)
+          .toInt();
     });
     _updateLoadingProgress(0.4, detail: chapters[_chapterIndex].title);
     await _loadChapter(
@@ -221,7 +224,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     );
   }
 
-  Future<rs.BookshelfEntry> _refreshLocalBookIfNeeded(rs.BookshelfEntry book) async {
+  Future<rs.BookshelfEntry> _refreshLocalBookIfNeeded(
+    rs.BookshelfEntry book,
+  ) async {
     final refreshed = await local_books.refreshLocalBookEntry(book);
     if (refreshed == null) return book;
     await ref.read(bookshelfProvider.notifier).upsert(refreshed);
@@ -800,9 +805,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                                 ref
                                     .read(settingsProvider.notifier)
                                     .update(
-                                      (previous) => previous.copyWith(
-                                        readerFont: preset,
-                                      ),
+                                      (previous) =>
+                                          previous.copyWith(readerFont: preset),
                                     );
                                 unawaited(
                                   _repaginate(targetPageIndex: _pageIndex),
@@ -847,7 +851,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                         ref
                             .read(settingsProvider.notifier)
                             .update(
-                              (previous) => previous.copyWith(lineHeight: value),
+                              (previous) =>
+                                  previous.copyWith(lineHeight: value),
                             );
                         unawaited(_repaginate(targetPageIndex: _pageIndex));
                       },
@@ -860,9 +865,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                         ref
                             .read(settingsProvider.notifier)
                             .update(
-                              (previous) => previous.copyWith(
-                                keepScreenOn: value,
-                              ),
+                              (previous) =>
+                                  previous.copyWith(keepScreenOn: value),
                             );
                       },
                     ),

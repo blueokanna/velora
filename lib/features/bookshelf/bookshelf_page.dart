@@ -130,7 +130,9 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${AppLocalizations.of(context).imported}: ${entry.title}'),
+        content: Text(
+          '${AppLocalizations.of(context).imported}: ${entry.title}',
+        ),
       ),
     );
   }
@@ -169,7 +171,9 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${AppLocalizations.of(context).imported}: ${entry.title}'),
+        content: Text(
+          '${AppLocalizations.of(context).imported}: ${entry.title}',
+        ),
       ),
     );
   }
@@ -268,37 +272,43 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
   }
 
   List<String> _formatOptions(List<rs.BookshelfEntry> items) {
-    final options = items
-        .map(
-          (book) => _formatLabel(
-            decodeBookMeta(book.bookMetaJson)?.format ?? book.kind,
-          ),
-        )
-        .toSet()
-        .toList(growable: false)
-      ..sort();
+    final options =
+        items
+            .map(
+              (book) => _formatLabel(
+                decodeBookMeta(book.bookMetaJson)?.format ?? book.kind,
+              ),
+            )
+            .toSet()
+            .toList(growable: false)
+          ..sort();
     return options;
   }
 
   List<rs.BookshelfEntry> _filterBooks(List<rs.BookshelfEntry> items) {
     final query = _searchQuery.trim().toLowerCase();
-    return items.where((book) {
-      final meta = decodeBookMeta(book.bookMetaJson);
-      final haystack = <String>[
-        book.title,
-        book.author,
-        book.kind,
-        book.pathOrUrl,
-        if (meta != null) meta.format,
-      ].join('\n').toLowerCase();
-      final matchesQuery = query.isEmpty || haystack.contains(query);
-      final format = _formatLabel(meta?.format ?? book.kind);
-      final matchesFormat = _formatFilter == null || _formatFilter == format;
-      return matchesQuery && matchesFormat;
-    }).toList(growable: false);
+    return items
+        .where((book) {
+          final meta = decodeBookMeta(book.bookMetaJson);
+          final haystack = <String>[
+            book.title,
+            book.author,
+            book.kind,
+            book.pathOrUrl,
+            if (meta != null) meta.format,
+          ].join('\n').toLowerCase();
+          final matchesQuery = query.isEmpty || haystack.contains(query);
+          final format = _formatLabel(meta?.format ?? book.kind);
+          final matchesFormat =
+              _formatFilter == null || _formatFilter == format;
+          return matchesQuery && matchesFormat;
+        })
+        .toList(growable: false);
   }
 
-  Map<String, List<rs.BookshelfEntry>> _groupBooks(List<rs.BookshelfEntry> items) {
+  Map<String, List<rs.BookshelfEntry>> _groupBooks(
+    List<rs.BookshelfEntry> items,
+  ) {
     final grouped = <String, List<rs.BookshelfEntry>>{};
     for (final book in items) {
       final label = _formatLabel(
@@ -478,59 +488,68 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
                             '${filteredItems.length}_${_searchQuery}_${_formatFilter ?? 'all'}_${_selectedIds.length}',
                           ),
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-                          children: grouped.entries.map((section) {
-                            final books = section.value;
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 18),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: Text(
-                                      '${section.key} · ${books.length}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium,
-                                    ),
-                                  ),
-                                  GridView.builder(
-                                    shrinkWrap: true,
-                                    physics:
-                                        const NeverScrollableScrollPhysics(),
-                                    gridDelegate:
-                                        SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: crossAxis,
-                                      mainAxisSpacing: 16,
-                                      crossAxisSpacing: 16,
-                                      childAspectRatio: 0.58,
-                                    ),
-                                    itemCount: books.length,
-                                    itemBuilder: (context, index) {
-                                      final book = books[index];
-                                      return KeyedSubtree(
-                                        key: section.key == grouped.keys.first &&
-                                                index == 0
-                                            ? AppKeys.bookshelfGrid
-                                            : null,
-                                        child: _BookCard(
-                                          book: book,
-                                          selected: _selectedIds.contains(book.id),
-                                          selectionMode: _selectionMode,
-                                          onTap: () => context.push(
-                                            '/reader?bookId=${Uri.encodeQueryComponent(book.id)}',
-                                            extra: book,
-                                          ),
-                                          onToggleSelected: () =>
-                                              _toggleSelection(book.id),
+                          children: grouped.entries
+                              .map((section) {
+                                final books = section.value;
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 18),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 12,
                                         ),
-                                      );
-                                    },
+                                        child: Text(
+                                          '${section.key} · ${books.length}',
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.titleMedium,
+                                        ),
+                                      ),
+                                      GridView.builder(
+                                        shrinkWrap: true,
+                                        physics:
+                                            const NeverScrollableScrollPhysics(),
+                                        gridDelegate:
+                                            SliverGridDelegateWithFixedCrossAxisCount(
+                                              crossAxisCount: crossAxis,
+                                              mainAxisSpacing: 16,
+                                              crossAxisSpacing: 16,
+                                              childAspectRatio: 0.58,
+                                            ),
+                                        itemCount: books.length,
+                                        itemBuilder: (context, index) {
+                                          final book = books[index];
+                                          return KeyedSubtree(
+                                            key:
+                                                section.key ==
+                                                        grouped.keys.first &&
+                                                    index == 0
+                                                ? AppKeys.bookshelfGrid
+                                                : null,
+                                            child: _BookCard(
+                                              book: book,
+                                              selected: _selectedIds.contains(
+                                                book.id,
+                                              ),
+                                              selectionMode: _selectionMode,
+                                              onTap: () => context.push(
+                                                '/reader?bookId=${Uri.encodeQueryComponent(book.id)}',
+                                                extra: book,
+                                              ),
+                                              onToggleSelected: () =>
+                                                  _toggleSelection(book.id),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
-                            );
-                          }).toList(growable: false),
+                                );
+                              })
+                              .toList(growable: false),
                         ),
                 ),
               ),
@@ -668,9 +687,7 @@ class _BookCard extends StatelessWidget {
                                 chip,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelSmall
+                                style: Theme.of(context).textTheme.labelSmall
                                     ?.copyWith(
                                       color: colorScheme.onSurfaceVariant,
                                       fontWeight: FontWeight.w600,
@@ -775,7 +792,11 @@ String _formatBytes(BigInt bytes) {
     size /= 1024;
     unitIndex += 1;
   }
-  final digits = size >= 100 ? 0 : size >= 10 ? 1 : 2;
+  final digits = size >= 100
+      ? 0
+      : size >= 10
+      ? 1
+      : 2;
   return '${size.toStringAsFixed(digits)} ${units[unitIndex]}';
 }
 

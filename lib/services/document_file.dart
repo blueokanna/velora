@@ -22,7 +22,9 @@ class DocumentFileChannel {
   static bool get isAndroid => Platform.isAndroid;
 
   static Future<DocumentFile?> openBookDocument() async {
-    final raw = await _channel.invokeMapMethod<String, Object?>('openBookDocument');
+    final raw = await _channel.invokeMapMethod<String, Object?>(
+      'openBookDocument',
+    );
     return _decodeDocument(raw);
   }
 
@@ -40,14 +42,18 @@ class DocumentFileChannel {
     if (uri == null || uri.isEmpty) return null;
     return DocumentFile(
       uri: uri,
-      name: (raw['name'] as String?)?.trim().isNotEmpty == true ? raw['name'] as String : '未命名',
+      name: (raw['name'] as String?)?.trim().isNotEmpty == true
+          ? raw['name'] as String
+          : '未命名',
       size: (raw['size'] as num?)?.toInt() ?? 0,
       lastModifiedMillis: (raw['lastModified'] as num?)?.toInt(),
     );
   }
 
   static Future<Uint8List> readBytes(String uri) async {
-    final bytes = await _channel.invokeMethod<Uint8List>('readBytes', {'uri': uri});
+    final bytes = await _channel.invokeMethod<Uint8List>('readBytes', {
+      'uri': uri,
+    });
     if (bytes == null) {
       throw StateError('无法读取文档内容');
     }

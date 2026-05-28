@@ -136,9 +136,7 @@ final String _sampleBook = (() {
     ..writeln('第2章 灯下')
     ..writeln(_chapterParagraphs('暖黄的灯光压低了房间的边缘，让阅读节奏变得安静而稳定。', 120))
     ..writeln('第3章 长夜')
-    ..writeln(
-      _chapterParagraphs('夜色很深，但翻页的动作仍旧明确，每一次前进都应该被温柔回应。', 120),
-    );
+    ..writeln(_chapterParagraphs('夜色很深，但翻页的动作仍旧明确，每一次前进都应该被温柔回应。', 120));
   return buffer.toString();
 })();
 

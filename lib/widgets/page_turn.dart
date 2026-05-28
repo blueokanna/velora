@@ -419,12 +419,13 @@ class _PageCurlClipper extends CustomClipper<Path> {
     final path = Path();
     final width = size.width;
     final height = size.height;
-    final resolvedFoldX = (foldX ??
-            (direction == PageTurnDirection.next
-                ? width * (1 - progress * 0.96)
-                : width * progress * 0.96))
-        .clamp(width * 0.04, width * 0.96)
-        .toDouble();
+    final resolvedFoldX =
+        (foldX ??
+                (direction == PageTurnDirection.next
+                    ? width * (1 - progress * 0.96)
+                    : width * progress * 0.96))
+            .clamp(width * 0.04, width * 0.96)
+            .toDouble();
     final sweep = foldWidth.clamp(18.0, width * 0.28);
     if (direction == PageTurnDirection.next) {
       path.moveTo(0, 0);

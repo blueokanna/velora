@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/legacy.dart';
 
 import '../src/rust/api/storage.dart' as rs;
 
-class BookshelfNotifier extends StateNotifier<AsyncValue<List<rs.BookshelfEntry>>> {
+class BookshelfNotifier
+    extends StateNotifier<AsyncValue<List<rs.BookshelfEntry>>> {
   BookshelfNotifier() : super(const AsyncValue.loading()) {
     refresh();
   }
@@ -61,7 +62,10 @@ class BookshelfNotifier extends StateNotifier<AsyncValue<List<rs.BookshelfEntry>
   }
 }
 
-final bookshelfProvider = StateNotifierProvider<BookshelfNotifier,
-    AsyncValue<List<rs.BookshelfEntry>>>((ref) {
-  return BookshelfNotifier();
-});
+final bookshelfProvider =
+    StateNotifierProvider<
+      BookshelfNotifier,
+      AsyncValue<List<rs.BookshelfEntry>>
+    >((ref) {
+      return BookshelfNotifier();
+    });
