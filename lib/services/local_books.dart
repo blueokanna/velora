@@ -92,7 +92,11 @@ Future<rs.BookshelfEntry?> refreshLocalBookEntry(
     kind: isDocumentUriBook(book) ? '${meta.format}_uri' : meta.format,
     pathOrUrl: book.pathOrUrl,
     bookMetaJson: encoded,
-    cover: _preferText(meta.coverDataUrl ?? '', online?.coverUrl),
+    cover: resolveStoredBookCover(
+      currentCover: book.cover,
+      embeddedCover: meta.coverDataUrl,
+      onlineCover: online?.coverUrl,
+    ),
     lastChapter: book.lastChapter,
     lastOffset: book.lastOffset,
     updatedAt: signatureChanged
@@ -123,7 +127,11 @@ Future<rs.BookshelfEntry> enrichBookEntryMetadata(
     kind: entry.kind,
     pathOrUrl: entry.pathOrUrl,
     bookMetaJson: entry.bookMetaJson,
-    cover: _preferText(entry.cover ?? '', online.coverUrl),
+    cover: resolveStoredBookCover(
+      currentCover: entry.cover,
+      embeddedCover: null,
+      onlineCover: online.coverUrl,
+    ),
     lastChapter: entry.lastChapter,
     lastOffset: entry.lastOffset,
     updatedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
@@ -141,6 +149,20 @@ Future<BookMetadata?> _lookupLocalMetadata(
 }) async {
   if (!force && author.trim().isNotEmpty && !_empty(cover)) return null;
   return _metadataLookup.lookupByTitle(title, author: author);
+}
+
+String? resolveStoredBookCover({
+  required String? currentCover,
+  required String? embeddedCover,
+  required String? onlineCover,
+}) {
+  final current = currentCover?.trim() ?? '';
+  if (current.isNotEmpty) return current;
+  final embedded = embeddedCover?.trim() ?? '';
+  if (embedded.isNotEmpty) return embedded;
+  final online = onlineCover?.trim() ?? '';
+  if (online.isNotEmpty) return online;
+  return null;
 }
 
 String _preferText(String current, String? candidate) {

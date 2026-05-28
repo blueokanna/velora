@@ -32,8 +32,11 @@ Velora 是一个面向生产环境的跨平台小说阅读器，使用 Flutter �
 - MOBI/AZW3 支持未加密、可直接读取文本记录的文件；DRM、HUFF/CDIC 压缩或无法安全解码的输入会明确报错。
 - 离线书籍会优先读取 EPUB 内嵌标题、作者和封面；TXT、MOBI、AZW3 等缺失元数据时，可基于书名从公开页面补全标题、作者、简介和封面 URL。
 - 在线元数据查找面向 Qidian、Fanqie Novel、Qimao、Tadu、17K、Faloo、GoodNovel、Wuxiaworld、Royal Road 等公开小说页面，只处理书名、作者、简介、封面等基础元数据，不抓取正文内容。
-- 在线阅读兼容 Legado 风格书源 JSON，支持搜索、详情、目录、正文抓取和封面 URL 提取。
-- 书源导入支持直接粘贴 JSON、HTTP(S) 书源地址、阅读类 `yuedu://` 在线导入链接，以及常见社区聚合页面中的 JSON 片段。
+- 在线阅读兼容多种风格书源 JSON，支持搜索、详情、目录、正文抓取和封面 URL 提取。
+- `发现` 页在未输入搜索词时，会从当前启用书源中自动拉取首批推荐内容；用户仍可随时手动搜索书名、作者或题材关键词。
+- 书源导入支持直接粘贴 JSON、HTTP(S) 书源地址、阅读类在线导入链接、YCKCEO 书源详情页地址，以及包含多个 JSON 链接的批量文本输入。
+- 书源导入抓取由 Flutter 侧 HTTP 客户端执行，Android 正式构建已补齐 `INTERNET` 权限并放开常见 HTTP 书源访问，避免设备上出现导入请求失败或推荐内容拉取失败。
+- Legado 风格搜索模板兼容 `{key}`、`{{key}}`、`{keyword}`、`{{keyword}}`、`{searchKey}` 以及常见分页占位符，并会自动补全相对搜索 URL。
 - 阅读器使用渐进分页与阶段化加载，不在首开时一次性阻塞主线程。
 - 打开书籍时展示共享容器过渡、骨架屏、进度条和百分比，减少感知卡顿。
 - 阅读页支持点击翻页、拖拽跟手翻页、目录面板、书签面板、阅读设置和应用设置跳转。
@@ -106,6 +109,7 @@ Velora 不会也不能通过应用仓库直接安装、升级或替换系统级�
 - `lib/app.dart`：应用根组件、主题注入、本地化与路由挂载。
 - `lib/main.dart`：正式启动入口、测试可注入启动准备阶段。
 - `lib/features/bookshelf`：书架、导入、封面卡片、打开入口。
+- `lib/services/source_recommendations.dart`：发现页默认推荐内容装载。
 - `lib/features/reader`：阅读器、渐进分页、目录、书签、阅读设置、加载过渡。
 - `lib/features/settings`：主题、语言、翻页效果和全局配置。
 - `lib/router`：主壳层导航与阅读器过渡路由。
@@ -182,6 +186,10 @@ Velora 当前支持以下核心字段：
 ```
 
 CSS Selector 会基于响应 URL 自动解析相对链接，正文抓取结果进入统一阅读器分页与进度恢复流程。Velora 也兼容常见的 `bookSourceName`、`bookSourceUrl`、`searchUrl`、`ruleSearch`、`ruleBookInfo`、`ruleToc`、`ruleContent` 字段，并会把 `coverUrl` 映射为封面选择器。
+
+如果粘贴内容中包含多个 JSON 链接，Velora 会自动逐个抓取并批量导入；如果粘贴的是 YCKCEO 详情页地址一键导入链接，Velora 会先提取真实 JSON 下载地址再导入。
+
+书架卡片默认只突出格式标签与阅读进度，不再把本地文件大小作为主信息展示；离线书籍在补齐远程封面或内嵌封面后，会优先显示真实封面图。
 
 ## 许可证声明
 

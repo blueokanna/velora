@@ -627,15 +627,16 @@ fn wire__crate__api__txt_book__search_in_book_impl(
     )
 }
 fn wire__crate__api__book_source__source_book_detail_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
-) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "source_book_detail",
-            port: None,
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
             let message = unsafe {
@@ -650,26 +651,31 @@ fn wire__crate__api__book_source__source_book_detail_impl(
             let api_source_json = <String>::sse_decode(&mut deserializer);
             let api_book_url = <String>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
-                (move || {
-                    let output_ok =
-                        crate::api::book_source::source_book_detail(api_source_json, api_book_url)?;
-                    Ok(output_ok)
-                })(),
-            )
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::book_source::source_book_detail(
+                            api_source_json,
+                            api_book_url,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
         },
     )
 }
 fn wire__crate__api__book_source__source_chapter_content_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
-) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "source_chapter_content",
-            port: None,
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
             let message = unsafe {
@@ -684,28 +690,31 @@ fn wire__crate__api__book_source__source_chapter_content_impl(
             let api_source_json = <String>::sse_decode(&mut deserializer);
             let api_chapter_url = <String>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
-                (move || {
-                    let output_ok = crate::api::book_source::source_chapter_content(
-                        api_source_json,
-                        api_chapter_url,
-                    )?;
-                    Ok(output_ok)
-                })(),
-            )
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::book_source::source_chapter_content(
+                            api_source_json,
+                            api_chapter_url,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
         },
     )
 }
 fn wire__crate__api__book_source__source_search_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
-) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "source_search",
-            port: None,
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
             let message = unsafe {
@@ -720,26 +729,29 @@ fn wire__crate__api__book_source__source_search_impl(
             let api_source_json = <String>::sse_decode(&mut deserializer);
             let api_keyword = <String>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
-                (move || {
-                    let output_ok =
-                        crate::api::book_source::source_search(api_source_json, api_keyword)?;
-                    Ok(output_ok)
-                })(),
-            )
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::book_source::source_search(api_source_json, api_keyword)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
         },
     )
 }
 fn wire__crate__api__book_source__source_toc_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
-) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "source_toc",
-            port: None,
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
             let message = unsafe {
@@ -754,13 +766,15 @@ fn wire__crate__api__book_source__source_toc_impl(
             let api_source_json = <String>::sse_decode(&mut deserializer);
             let api_toc_url = <String>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
-                (move || {
-                    let output_ok =
-                        crate::api::book_source::source_toc(api_source_json, api_toc_url)?;
-                    Ok(output_ok)
-                })(),
-            )
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::book_source::source_toc(api_source_json, api_toc_url)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
         },
     )
 }
@@ -1227,6 +1241,20 @@ fn pde_ffi_dispatcher_primary_impl(
         3 => wire__crate__api__http_source__fetch_url_impl(port, ptr, rust_vec_len, data_len),
         4 => wire__crate__api__http_source__http_get_impl(port, ptr, rust_vec_len, data_len),
         5 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__book_source__source_book_detail_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        19 => wire__crate__api__book_source__source_chapter_content_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        20 => wire__crate__api__book_source__source_search_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__book_source__source_toc_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1255,12 +1283,6 @@ fn pde_ffi_dispatcher_sync_impl(
         15 => wire__crate__api__txt_book__read_chapter_bytes_impl(ptr, rust_vec_len, data_len),
         16 => wire__crate__api__storage__remove_book_impl(ptr, rust_vec_len, data_len),
         17 => wire__crate__api__txt_book__search_in_book_impl(ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__book_source__source_book_detail_impl(ptr, rust_vec_len, data_len),
-        19 => {
-            wire__crate__api__book_source__source_chapter_content_impl(ptr, rust_vec_len, data_len)
-        }
-        20 => wire__crate__api__book_source__source_search_impl(ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__book_source__source_toc_impl(ptr, rust_vec_len, data_len),
         22 => wire__crate__api__storage__update_progress_impl(ptr, rust_vec_len, data_len),
         23 => wire__crate__api__storage__upsert_book_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),

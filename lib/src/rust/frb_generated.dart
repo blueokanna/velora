@@ -153,22 +153,22 @@ abstract class RustLibApi extends BaseApi {
     required int maxHits,
   });
 
-  BookDetail crateApiBookSourceSourceBookDetail({
+  Future<BookDetail> crateApiBookSourceSourceBookDetail({
     required String sourceJson,
     required String bookUrl,
   });
 
-  String crateApiBookSourceSourceChapterContent({
+  Future<String> crateApiBookSourceSourceChapterContent({
     required String sourceJson,
     required String chapterUrl,
   });
 
-  List<SearchResult> crateApiBookSourceSourceSearch({
+  Future<List<SearchResult>> crateApiBookSourceSourceSearch({
     required String sourceJson,
     required String keyword,
   });
 
-  List<TocEntry> crateApiBookSourceSourceToc({
+  Future<List<TocEntry>> crateApiBookSourceSourceToc({
     required String sourceJson,
     required String tocUrl,
   });
@@ -669,17 +669,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  BookDetail crateApiBookSourceSourceBookDetail({
+  Future<BookDetail> crateApiBookSourceSourceBookDetail({
     required String sourceJson,
     required String bookUrl,
   }) {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(sourceJson, serializer);
           sse_encode_String(bookUrl, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18)!;
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 18,
+            port: port_,
+          );
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_book_detail,
@@ -699,17 +704,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  String crateApiBookSourceSourceChapterContent({
+  Future<String> crateApiBookSourceSourceChapterContent({
     required String sourceJson,
     required String chapterUrl,
   }) {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(sourceJson, serializer);
           sse_encode_String(chapterUrl, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 19)!;
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -729,17 +739,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  List<SearchResult> crateApiBookSourceSourceSearch({
+  Future<List<SearchResult>> crateApiBookSourceSourceSearch({
     required String sourceJson,
     required String keyword,
   }) {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(sourceJson, serializer);
           sse_encode_String(keyword, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20)!;
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 20,
+            port: port_,
+          );
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_search_result,
@@ -759,17 +774,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  List<TocEntry> crateApiBookSourceSourceToc({
+  Future<List<TocEntry>> crateApiBookSourceSourceToc({
     required String sourceJson,
     required String tocUrl,
   }) {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(sourceJson, serializer);
           sse_encode_String(tocUrl, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 21,
+            port: port_,
+          );
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_toc_entry,

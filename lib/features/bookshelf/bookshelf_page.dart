@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../app_keys.dart';
 import '../../l10n/app_localizations.dart';
@@ -17,6 +18,10 @@ import '../../state/bookshelf.dart';
 import '../../theme/motion.dart';
 import '../../widgets/responsive.dart';
 import '../reader/book_meta_codec.dart';
+
+enum _BookAction { details, setCoverUrl, setCoverImage, share }
+
+const _clearCoverSentinel = '__velora_clear_cover__';
 
 class BookshelfPage extends ConsumerStatefulWidget {
   const BookshelfPage({super.key});
@@ -255,6 +260,369 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
     setState(() {
       _selectedIds.clear();
     });
+  }
+
+  Future<void> _showBookActions(
+    rs.BookshelfEntry book,
+    BuildContext originContext,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final sharePositionOrigin = _sharePositionOrigin(originContext);
+    final action = await showModalBottomSheet<_BookAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: Text(l10n.bookDetails),
+                onTap: () => Navigator.pop(sheetContext, _BookAction.details),
+              ),
+              if (isManagedOfflineBook(book))
+                ListTile(
+                  leading: const Icon(Icons.photo_outlined),
+                  title: Text(l10n.setCoverUrl),
+                  onTap: () =>
+                      Navigator.pop(sheetContext, _BookAction.setCoverUrl),
+                ),
+              if (isManagedOfflineBook(book))
+                ListTile(
+                  leading: const Icon(Icons.image_outlined),
+                  title: Text(l10n.setCoverImage),
+                  onTap: () =>
+                      Navigator.pop(sheetContext, _BookAction.setCoverImage),
+                ),
+              ListTile(
+                leading: const Icon(Icons.share_outlined),
+                title: Text(l10n.shareBook),
+                onTap: () => Navigator.pop(sheetContext, _BookAction.share),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _BookAction.details:
+        await _showBookDetails(book, sharePositionOrigin);
+      case _BookAction.setCoverUrl:
+        await _editCoverUrl(book);
+      case _BookAction.setCoverImage:
+        await _pickCoverImage(book);
+      case _BookAction.share:
+        await _shareBook(book, sharePositionOrigin);
+    }
+  }
+
+  Future<void> _showBookDetails(
+    rs.BookshelfEntry book,
+    Rect? sharePositionOrigin,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final meta = decodeBookMeta(book.bookMetaJson);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    l10n.bookDetails,
+                    style: Theme.of(sheetContext).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 110,
+                        height: 154,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: _BookCover(
+                            raw: book.cover,
+                            title: book.title,
+                            colorScheme: colorScheme,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              book.title,
+                              style: Theme.of(
+                                sheetContext,
+                              ).textTheme.titleMedium,
+                            ),
+                            if (book.author.trim().isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                book.author,
+                                style: Theme.of(sheetContext)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            _DetailField(
+                              label: l10n.formatLabel,
+                              value: _formatLabel(meta?.format ?? book.kind),
+                            ),
+                            _DetailField(
+                              label: l10n.locationLabel,
+                              value: book.pathOrUrl,
+                            ),
+                            if ((book.sourceName ?? '').trim().isNotEmpty)
+                              _DetailField(
+                                label: l10n.sourceLink,
+                                value: book.sourceName!,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: () async {
+                          Navigator.pop(sheetContext);
+                          await _shareBook(book, sharePositionOrigin);
+                        },
+                        icon: const Icon(Icons.share_outlined),
+                        label: Text(l10n.shareBook),
+                      ),
+                      if (isManagedOfflineBook(book))
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(sheetContext);
+                            await _editCoverUrl(book);
+                          },
+                          icon: const Icon(Icons.photo_outlined),
+                          label: Text(l10n.setCoverUrl),
+                        ),
+                      if (isManagedOfflineBook(book))
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(sheetContext);
+                            await _pickCoverImage(book);
+                          },
+                          icon: const Icon(Icons.image_outlined),
+                          label: Text(l10n.setCoverImage),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _editCoverUrl(rs.BookshelfEntry book) async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        final l10n = AppLocalizations.of(dialogContext);
+        final controller = TextEditingController(
+          text: _manualCoverSeed(book.cover),
+        );
+        String? errorText;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text(l10n.setCoverUrl),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.url,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  hintText: l10n.coverUrlHint,
+                  errorText: errorText,
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(l10n.cancel),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      Navigator.pop(dialogContext, _clearCoverSentinel),
+                  child: Text(l10n.clearCover),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final normalized = _normalizeCoverUrl(controller.text);
+                    if (normalized == null) {
+                      setDialogState(() {
+                        errorText = l10n.invalidCoverUrl;
+                      });
+                      return;
+                    }
+                    Navigator.pop(dialogContext, normalized);
+                  },
+                  child: Text(l10n.save),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (!mounted || result == null) return;
+    final l10n = AppLocalizations.of(context);
+    final nextCover = result == _clearCoverSentinel ? null : result;
+    await _updateBookCover(book, nextCover);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          nextCover == null ? l10n.coverCleared : l10n.coverUpdated,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _shareBook(
+    rs.BookshelfEntry book,
+    Rect? sharePositionOrigin,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      final fileData = await _shareFilesForBook(book);
+      if (fileData != null) {
+        await Share.shareXFiles(
+          fileData.$1,
+          subject: book.title,
+          text: _shareTextForBook(book),
+          sharePositionOrigin: sharePositionOrigin,
+          fileNameOverrides: fileData.$2,
+        );
+      } else {
+        await Share.share(
+          _shareTextForBook(book),
+          subject: book.title,
+          sharePositionOrigin: sharePositionOrigin,
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${l10n.shareFailed}: $error')));
+    }
+  }
+
+  Future<void> _pickCoverImage(rs.BookshelfEntry book) async {
+    final picked = await FilePicker.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.single;
+    final bytes =
+        file.bytes ??
+        (file.path == null ? null : await File(file.path!).readAsBytes());
+    if (bytes == null || bytes.isEmpty) return;
+    final extension = (file.extension ?? '').toLowerCase();
+    final mimeType = switch (extension) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      _ => 'image/png',
+    };
+    final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
+    await _updateBookCover(book, dataUrl);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context).coverImageUpdated)),
+    );
+  }
+
+  Future<void> _updateBookCover(
+    rs.BookshelfEntry book,
+    String? nextCover,
+  ) async {
+    await ref
+        .read(bookshelfProvider.notifier)
+        .upsert(
+          rs.BookshelfEntry(
+            id: book.id,
+            title: book.title,
+            author: book.author,
+            kind: book.kind,
+            pathOrUrl: book.pathOrUrl,
+            bookMetaJson: book.bookMetaJson,
+            cover: nextCover,
+            lastChapter: book.lastChapter,
+            lastOffset: book.lastOffset,
+            updatedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+            sourceName: book.sourceName,
+            sourceJson: book.sourceJson,
+            tocUrl: book.tocUrl,
+          ),
+        );
+  }
+
+  Rect? _sharePositionOrigin(BuildContext originContext) {
+    final renderBox = originContext.findRenderObject() as RenderBox?;
+    return renderBox == null
+        ? null
+        : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  }
+
+  Future<(List<XFile>, List<String>?)?> _shareFilesForBook(
+    rs.BookshelfEntry book,
+  ) async {
+    if (!isManagedOfflineBook(book) || Platform.isLinux) {
+      return null;
+    }
+    if (isDocumentUriBook(book)) {
+      final source = await describeLocalBook(book);
+      final fileName = _shareFileName(book, source?.name);
+      return (
+        [
+          XFile.fromData(
+            await DocumentFileChannel.readBytes(book.pathOrUrl),
+            mimeType: _shareMimeType(book, fileName),
+          ),
+        ],
+        [fileName],
+      );
+    }
+    final file = File(book.pathOrUrl);
+    if (!await file.exists()) {
+      return null;
+    }
+    return (
+      [XFile(file.path, mimeType: _shareMimeType(book, file.path))],
+      null,
+    );
   }
 
   void _toggleSelection(String bookId) {
@@ -543,6 +911,11 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
                                                 '/reader?bookId=${Uri.encodeQueryComponent(book.id)}',
                                                 extra: book,
                                               ),
+                                              onShowActions: (originContext) =>
+                                                  _showBookActions(
+                                                    book,
+                                                    originContext,
+                                                  ),
                                               onToggleSelected: () =>
                                                   _toggleSelection(book.id),
                                             ),
@@ -570,6 +943,7 @@ class _BookCard extends StatelessWidget {
   final bool selected;
   final bool selectionMode;
   final VoidCallback onTap;
+  final ValueChanged<BuildContext> onShowActions;
   final VoidCallback onToggleSelected;
 
   const _BookCard({
@@ -577,6 +951,7 @@ class _BookCard extends StatelessWidget {
     required this.selected,
     required this.selectionMode,
     required this.onTap,
+    required this.onShowActions,
     required this.onToggleSelected,
   });
 
@@ -584,13 +959,7 @@ class _BookCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final meta = decodeBookMeta(book.bookMetaJson);
-    final chips = <String>[
-      _formatLabel(meta?.format ?? book.kind),
-      if (meta != null && meta.sizeBytes > BigInt.zero)
-        _formatBytes(meta.sizeBytes),
-      if (meta != null && meta.chapters.isNotEmpty)
-        '${(book.lastChapter + 1).clamp(1, meta.chapters.length)}/${meta.chapters.length}',
-    ];
+    final formatChip = _formatLabel(meta?.format ?? book.kind);
 
     return Hero(
       tag: book.id,
@@ -615,6 +984,32 @@ class _BookCard extends StatelessWidget {
                       title: book.title,
                       colorScheme: colorScheme,
                     ),
+                    if (!selectionMode)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Builder(
+                          builder: (menuContext) {
+                            return DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: colorScheme.surface.withValues(
+                                  alpha: 0.92,
+                                ),
+                                shape: BoxShape.circle,
+                              ),
+                              child: IconButton(
+                                visualDensity: VisualDensity.compact,
+                                splashRadius: 18,
+                                onPressed: () => onShowActions(menuContext),
+                                icon: Icon(
+                                  Icons.more_horiz,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
                     if (selectionMode || selected)
                       Positioned(
                         top: 10,
@@ -662,33 +1057,39 @@ class _BookCard extends StatelessWidget {
                         ),
                       ),
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: chips
-                          .map(
-                            (chip) => Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                chip,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
-                            ),
-                          )
-                          .toList(growable: false),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            formatChip,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                        const Spacer(),
+                        if (meta != null && meta.chapters.isNotEmpty)
+                          Text(
+                            '${(book.lastChapter + 1).clamp(1, meta.chapters.length)}/${meta.chapters.length}',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                      ],
                     ),
                   ],
                 ),
@@ -814,21 +1215,93 @@ String _formatLabel(String raw) {
   return normalized.toUpperCase();
 }
 
-String _formatBytes(BigInt bytes) {
-  final value = bytes.toDouble();
-  const units = ['B', 'KB', 'MB', 'GB'];
-  var unitIndex = 0;
-  var size = value;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
+String _manualCoverSeed(String? raw) {
+  final value = raw?.trim() ?? '';
+  if (value.startsWith('http://') || value.startsWith('https://')) {
+    return value;
   }
-  final digits = size >= 100
-      ? 0
-      : size >= 10
-      ? 1
-      : 2;
-  return '${size.toStringAsFixed(digits)} ${units[unitIndex]}';
+  return '';
+}
+
+String? _normalizeCoverUrl(String raw) {
+  final value = raw.trim();
+  if (value.isEmpty) return '';
+  final uri = Uri.tryParse(value);
+  final scheme = uri?.scheme.toLowerCase();
+  if (uri == null || uri.host.isEmpty) return null;
+  if (scheme != 'http' && scheme != 'https') return null;
+  return uri.toString();
+}
+
+String _shareTextForBook(rs.BookshelfEntry book) {
+  final lines = <String>[book.title];
+  if (book.author.trim().isNotEmpty) {
+    lines.add(book.author.trim());
+  }
+  if (book.kind == 'online') {
+    lines.add(book.pathOrUrl);
+  } else if (!isDocumentUriBook(book)) {
+    lines.add(book.pathOrUrl);
+  }
+  return lines.join('\n');
+}
+
+String _shareFileName(rs.BookshelfEntry book, String? sourceName) {
+  final fallbackBase = book.title.trim().isEmpty
+      ? 'velora_book'
+      : book.title.trim();
+  final candidate =
+      (sourceName?.trim().isNotEmpty == true
+              ? sourceName!.trim()
+              : fallbackBase)
+          .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  if (candidate.contains('.')) return candidate;
+  final format = _formatLabel(book.kind).toLowerCase();
+  return '$candidate.$format';
+}
+
+String _shareMimeType(rs.BookshelfEntry book, String fileName) {
+  final lower = fileName.toLowerCase();
+  if (lower.endsWith('.txt')) return 'text/plain';
+  if (lower.endsWith('.epub')) return 'application/epub+zip';
+  if (lower.endsWith('.mobi')) return 'application/x-mobipocket-ebook';
+  if (lower.endsWith('.azw3')) return 'application/vnd.amazon.ebook';
+  final format = _formatLabel(book.kind).toLowerCase();
+  return switch (format) {
+    'txt' => 'text/plain',
+    'epub' => 'application/epub+zip',
+    'mobi' => 'application/x-mobipocket-ebook',
+    'azw3' => 'application/vnd.amazon.ebook',
+    _ => 'application/octet-stream',
+  };
+}
+
+class _DetailField extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailField({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(value, maxLines: 3, overflow: TextOverflow.ellipsis),
+        ],
+      ),
+    );
+  }
 }
 
 Uint8List? _decodeCover(String? raw) {

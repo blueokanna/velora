@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../app_keys.dart';
 import '../../l10n/app_localizations.dart';
@@ -242,7 +243,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         tocUrl.isEmpty) {
       throw StateError('在线书籍缺少书源或目录地址');
     }
-    final toc = bs.sourceToc(sourceJson: sourceJson, tocUrl: tocUrl);
+    final toc = await bs.sourceToc(sourceJson: sourceJson, tocUrl: tocUrl);
     final chapters = toc.map(_ReaderChapter.fromOnline).toList(growable: false);
     if (chapters.isEmpty) throw StateError('目录为空');
     if (!mounted) return;
@@ -267,7 +268,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       sourceSizeBytes: signature.sizeBytes,
       sourceModifiedAtMillis: signature.modifiedAtMillis,
     );
-    if (book.bookMetaJson == encoded && book.cover == meta.coverDataUrl) return;
+    final nextCover = local_books.resolveStoredBookCover(
+      currentCover: book.cover,
+      embeddedCover: meta.coverDataUrl,
+      onlineCover: null,
+    );
+    if (book.bookMetaJson == encoded && book.cover == nextCover) return;
     await ref
         .read(bookshelfProvider.notifier)
         .upsert(
@@ -278,7 +284,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
             kind: book.kind,
             pathOrUrl: book.pathOrUrl,
             bookMetaJson: encoded,
-            cover: meta.coverDataUrl,
+            cover: nextCover,
             lastChapter: book.lastChapter,
             lastOffset: book.lastOffset,
             updatedAt: book.updatedAt,
@@ -934,6 +940,115 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     context.go('/settings');
   }
 
+  Future<void> _shareCurrentBook(BuildContext originContext) async {
+    final book = _book;
+    if (book == null) return;
+    final l10n = AppLocalizations.of(context);
+    final sharePositionOrigin = _sharePositionOrigin(originContext);
+    try {
+      final fileData = await _shareFilesForBook(book);
+      if (fileData != null) {
+        await Share.shareXFiles(
+          fileData.$1,
+          subject: book.title,
+          text: _shareTextForBook(book),
+          sharePositionOrigin: sharePositionOrigin,
+          fileNameOverrides: fileData.$2,
+        );
+      } else {
+        await Share.share(
+          _shareTextForBook(book),
+          subject: book.title,
+          sharePositionOrigin: sharePositionOrigin,
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${l10n.shareFailed}: $error')));
+    }
+  }
+
+  Rect? _sharePositionOrigin(BuildContext originContext) {
+    final renderBox = originContext.findRenderObject() as RenderBox?;
+    return renderBox == null
+        ? null
+        : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  }
+
+  Future<(List<XFile>, List<String>?)?> _shareFilesForBook(
+    rs.BookshelfEntry book,
+  ) async {
+    if (!local_books.isManagedOfflineBook(book) || Platform.isLinux) {
+      return null;
+    }
+    if (local_books.isDocumentUriBook(book)) {
+      final source = await local_books.describeLocalBook(book);
+      final fileName = _shareFileName(book, source?.name);
+      return (
+        [
+          XFile.fromData(
+            await DocumentFileChannel.readBytes(book.pathOrUrl),
+            mimeType: _shareMimeType(book, fileName),
+          ),
+        ],
+        [fileName],
+      );
+    }
+    final file = File(book.pathOrUrl);
+    if (!await file.exists()) {
+      return null;
+    }
+    return (
+      [XFile(file.path, mimeType: _shareMimeType(book, file.path))],
+      null,
+    );
+  }
+
+  String _shareTextForBook(rs.BookshelfEntry book) {
+    final lines = <String>[book.title];
+    if (book.author.trim().isNotEmpty) {
+      lines.add(book.author.trim());
+    }
+    if (book.kind == 'online') {
+      lines.add(book.pathOrUrl);
+    } else if (!local_books.isDocumentUriBook(book)) {
+      lines.add(book.pathOrUrl);
+    }
+    return lines.join('\n');
+  }
+
+  String _shareFileName(rs.BookshelfEntry book, String? sourceName) {
+    final fallbackBase = book.title.trim().isEmpty
+        ? 'velora_book'
+        : book.title.trim();
+    final candidate =
+        (sourceName?.trim().isNotEmpty == true
+                ? sourceName!.trim()
+                : fallbackBase)
+            .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    if (candidate.contains('.')) return candidate;
+    final format = book.kind.replaceAll('_uri', '').trim().toLowerCase();
+    return '$candidate.${format.isEmpty ? 'book' : format}';
+  }
+
+  String _shareMimeType(rs.BookshelfEntry book, String fileName) {
+    final lower = fileName.toLowerCase();
+    if (lower.endsWith('.txt')) return 'text/plain';
+    if (lower.endsWith('.epub')) return 'application/epub+zip';
+    if (lower.endsWith('.mobi')) return 'application/x-mobipocket-ebook';
+    if (lower.endsWith('.azw3')) return 'application/vnd.amazon.ebook';
+    final format = book.kind.replaceAll('_uri', '').trim().toLowerCase();
+    return switch (format) {
+      'txt' => 'text/plain',
+      'epub' => 'application/epub+zip',
+      'mobi' => 'application/x-mobipocket-ebook',
+      'azw3' => 'application/vnd.amazon.ebook',
+      _ => 'application/octet-stream',
+    };
+  }
+
   void _leaveReader() {
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
@@ -1064,6 +1179,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                       onNextChapter: () => _gotoChapter(_chapterIndex + 1),
                       onShowToc: () => _showToc(context),
                       onShowBookmarks: () => _showBookmarks(context),
+                      onShare: (shareContext) =>
+                          _shareCurrentBook(shareContext),
                       onClose: () => setState(() => _showOverlay = false),
                       onShowReaderSettings: () => _showReaderSettings(context),
                       onOpenAppSettings: _openAppSettings,
@@ -1182,6 +1299,7 @@ class _ReaderOverlay extends StatelessWidget {
   final VoidCallback onNextChapter;
   final VoidCallback onShowToc;
   final VoidCallback onShowBookmarks;
+  final ValueChanged<BuildContext> onShare;
   final VoidCallback onShowReaderSettings;
   final VoidCallback onOpenAppSettings;
   final VoidCallback onClose;
@@ -1200,6 +1318,7 @@ class _ReaderOverlay extends StatelessWidget {
     required this.onNextChapter,
     required this.onShowToc,
     required this.onShowBookmarks,
+    required this.onShare,
     required this.onShowReaderSettings,
     required this.onOpenAppSettings,
     required this.onClose,
@@ -1308,6 +1427,15 @@ class _ReaderOverlay extends StatelessWidget {
                           icon: const Icon(Icons.bookmarks_outlined),
                           onPressed: onShowBookmarks,
                           tooltip: l10n.bookmarks,
+                        ),
+                        Builder(
+                          builder: (shareContext) {
+                            return IconButton.filledTonal(
+                              icon: const Icon(Icons.share_outlined),
+                              onPressed: () => onShare(shareContext),
+                              tooltip: l10n.shareBook,
+                            );
+                          },
                         ),
                         IconButton.filledTonal(
                           key: AppKeys.readerOverlayReaderSettings,

@@ -6,11 +6,11 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `absolute_url`, `select_attr`, `select_resource_url`, `select_text`, `urlencoding_lite`
+// These functions are ignored because they are not marked as `pub`: `absolute_url`, `render_search_url`, `select_attr`, `select_resource_url`, `select_text`, `urlencoding_lite`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BookSource`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`
 
-List<SearchResult> sourceSearch({
+Future<List<SearchResult>> sourceSearch({
   required String sourceJson,
   required String keyword,
 }) => RustLib.instance.api.crateApiBookSourceSourceSearch(
@@ -18,7 +18,7 @@ List<SearchResult> sourceSearch({
   keyword: keyword,
 );
 
-BookDetail sourceBookDetail({
+Future<BookDetail> sourceBookDetail({
   required String sourceJson,
   required String bookUrl,
 }) => RustLib.instance.api.crateApiBookSourceSourceBookDetail(
@@ -26,7 +26,7 @@ BookDetail sourceBookDetail({
   bookUrl: bookUrl,
 );
 
-List<TocEntry> sourceToc({
+Future<List<TocEntry>> sourceToc({
   required String sourceJson,
   required String tocUrl,
 }) => RustLib.instance.api.crateApiBookSourceSourceToc(
@@ -34,7 +34,7 @@ List<TocEntry> sourceToc({
   tocUrl: tocUrl,
 );
 
-String sourceChapterContent({
+Future<String> sourceChapterContent({
   required String sourceJson,
   required String chapterUrl,
 }) => RustLib.instance.api.crateApiBookSourceSourceChapterContent(
