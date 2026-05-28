@@ -18,7 +18,7 @@ Velora 是一个面向生产环境的跨平台小说阅读器，使用 Flutter �
 
 ## 产品图
 
-| 阅读与书架 | 设置与主题 |
+| 亮色主题设置 | 暗色主题设置 |
 | --- | --- |
 | <img src="assets/image.png" width="260" alt="Velora README preview"> | <img src="assets/image-3.png" width="260" alt="Velora settings preview"> |
 | 书源导入 | 书源管理 |
