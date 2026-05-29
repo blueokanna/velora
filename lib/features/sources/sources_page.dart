@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../state/sources.dart';
@@ -126,14 +128,28 @@ class _ImportSourcesDialogState extends ConsumerState<_ImportSourcesDialog> {
   String? _error;
   bool _running = false;
 
+  bool get _hasInput => _controller.text.trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_handleTextChanged);
+  }
+
+  void _handleTextChanged() {
+    if (!mounted || _running) return;
+    setState(() {});
+  }
+
   @override
   void dispose() {
+    _controller.removeListener(_handleTextChanged);
     _controller.dispose();
     super.dispose();
   }
 
   Future<void> _startImport() async {
-    if (_running || _controller.text.trim().isEmpty) return;
+    if (_running || !_hasInput) return;
     final controller = SourceImportController();
     setState(() {
       _running = true;
@@ -173,6 +189,28 @@ class _ImportSourcesDialogState extends ConsumerState<_ImportSourcesDialog> {
         _importController = null;
       });
     }
+  }
+
+  Future<void> _scanQrAndImport() async {
+    if (_running) return;
+    final l10n = AppLocalizations.of(context);
+    final permission = await Permission.camera.request();
+    if (!mounted) return;
+    if (!permission.isGranted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.cameraPermissionRequired)));
+      return;
+    }
+    final scanned = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        fullscreenDialog: true,
+        builder: (_) => const _ScanSourceQrPage(),
+      ),
+    );
+    if (!mounted || scanned == null || scanned.trim().isEmpty) return;
+    _controller.text = scanned.trim();
+    await _startImport();
   }
 
   void _cancelImport() {
@@ -215,6 +253,15 @@ class _ImportSourcesDialogState extends ConsumerState<_ImportSourcesDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton.icon(
+                  onPressed: _running ? null : _scanQrAndImport,
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: Text(l10n.importByQrCode),
+                ),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _controller,
                 minLines: 6,
@@ -272,9 +319,7 @@ class _ImportSourcesDialogState extends ConsumerState<_ImportSourcesDialog> {
             child: Text(l10n.cancel),
           ),
           FilledButton(
-            onPressed: _running || _controller.text.trim().isEmpty
-                ? null
-                : _startImport,
+            onPressed: _running || !_hasInput ? null : _startImport,
             child: Text(l10n.import),
           ),
         ],
@@ -295,5 +340,79 @@ class _ImportDialogResult {
 
   factory _ImportDialogResult.cancelled() {
     return const _ImportDialogResult(imported: 0, cancelled: true);
+  }
+}
+
+class _ScanSourceQrPage extends StatefulWidget {
+  const _ScanSourceQrPage();
+
+  @override
+  State<_ScanSourceQrPage> createState() => _ScanSourceQrPageState();
+}
+
+class _ScanSourceQrPageState extends State<_ScanSourceQrPage> {
+  final MobileScannerController _controller = MobileScannerController();
+  bool _handled = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleCapture(BarcodeCapture capture) {
+    if (_handled) return;
+    for (final barcode in capture.barcodes) {
+      final rawValue = barcode.rawValue?.trim();
+      if (rawValue == null || rawValue.isEmpty) {
+        continue;
+      }
+      _handled = true;
+      Navigator.of(context).pop(rawValue);
+      return;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(l10n.scanQrCode),
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          MobileScanner(controller: _controller, onDetect: _handleCapture),
+          IgnorePointer(
+            child: Center(
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  border: Border.all(color: colorScheme.primary, width: 3),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 48),
+              child: Text(
+                l10n.scanQrCodeHint,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

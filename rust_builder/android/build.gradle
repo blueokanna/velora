@@ -24,10 +24,18 @@ rootProject.allprojects {
 
 apply plugin: 'com.android.library'
 
-android {
-    if (project.android.hasProperty("namespace")) {
-        namespace 'com.flutter_rust_bridge.rust_lib_velora'
+def appProject = rootProject.subprojects.find { it.name == 'app' }
+def resolvedNdkVersion = null
+def appAndroidExtension = appProject?.extensions?.findByName('android')
+if (appAndroidExtension != null) {
+    def getNdkVersion = appAndroidExtension.class.methods.find {
+        it.name == 'getNdkVersion' && it.parameterCount == 0
     }
+    resolvedNdkVersion = getNdkVersion?.invoke(appAndroidExtension)
+}
+
+android {
+    namespace 'com.flutter_rust_bridge.rust_lib_velora'
 
     // Bumping the plugin compileSdkVersion requires all clients of this plugin
     // to bump the version in their app.
@@ -37,7 +45,9 @@ android {
     // declared in /android/app/build.gradle file of the Flutter project.
     // Replace it with a version number if this plugin requires a specfic NDK version.
     // (e.g. ndkVersion "23.1.7779620")
-    ndkVersion android.ndkVersion
+    if (resolvedNdkVersion != null) {
+        ndkVersion resolvedNdkVersion
+    }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8

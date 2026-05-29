@@ -34,10 +34,11 @@ class TextPaginator {
   });
 
   List<String> paginate(String text) {
-    return paginateWindow(text, startOffset: 0, maxPages: 1 << 20)
-        .pages
-        .map((item) => item.text)
-        .toList(growable: false);
+    return paginateWindow(
+      text,
+      startOffset: 0,
+      maxPages: 1 << 20,
+    ).pages.map((item) => item.text).toList(growable: false);
   }
 
   PageSliceWindow paginateWindow(
@@ -49,7 +50,14 @@ class TextPaginator {
       return const PageSliceWindow(pages: [], nextOffset: 0, hasMore: false);
     }
     final pages = <PageSlice>[];
-    final tp = TextPainter(textDirection: textDirection);
+    final tp = TextPainter(
+      textDirection: textDirection,
+      strutStyle: StrutStyle.fromTextStyle(style, forceStrutHeight: true),
+      textHeightBehavior: const TextHeightBehavior(
+        applyHeightToFirstAscent: true,
+        applyHeightToLastDescent: true,
+      ),
+    );
     var start = startOffset.clamp(0, text.length);
     while (start < text.length && pages.length < maxPages) {
       final page = _nextPage(text, start, tp);
@@ -64,30 +72,63 @@ class TextPaginator {
   }
 
   PageSlice _nextPage(String text, int start, TextPainter tp) {
-    int lo = 1;
-    int hi = text.length - start;
-    int best = 1;
-    while (lo <= hi) {
-      final mid = (lo + hi) ~/ 2;
-      final slice = text.substring(start, start + mid);
-      tp.text = TextSpan(text: slice, style: style);
-      tp.layout(maxWidth: maxWidth);
-      if (tp.size.height <= maxHeight) {
-        best = mid;
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
+    final remaining = text.length - start;
+    final estimate = _estimatedCharsPerPage().clamp(1, remaining).toInt();
+    var best = 1;
+    var lowFit = 0;
+    var highFail = remaining + 1;
+    if (_fits(text, start, estimate, tp)) {
+      lowFit = estimate;
+      var probe = estimate;
+      while (probe < remaining) {
+        final next = (probe * 13 ~/ 8 + 32).clamp(probe + 1, remaining).toInt();
+        if (_fits(text, start, next, tp)) {
+          lowFit = next;
+          probe = next;
+        } else {
+          highFail = next;
+          break;
+        }
+      }
+      if (lowFit == remaining) {
+        best = remaining;
+      }
+    } else {
+      highFail = estimate;
+      var probe = estimate;
+      while (probe > 1) {
+        final next = (probe ~/ 2).clamp(1, probe - 1).toInt();
+        if (_fits(text, start, next, tp)) {
+          lowFit = next;
+          break;
+        }
+        highFail = next;
+        probe = next;
       }
     }
-    var cut = best;
-    final segment = text.substring(start, start + best);
+    if (best != remaining) {
+      var lo = lowFit + 1;
+      var hi = highFail - 1;
+      best = lowFit == 0 ? 1 : lowFit;
+      while (lo <= hi) {
+        final mid = (lo + hi) ~/ 2;
+        if (_fits(text, start, mid, tp)) {
+          best = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+    }
+    var cut = best.clamp(1, remaining).toInt();
+    final segment = text.substring(start, start + cut);
     final lastNewline = segment.lastIndexOf('\n');
-    if (lastNewline > best * 0.5) {
+    if (lastNewline > cut * 0.5) {
       cut = lastNewline + 1;
     } else {
       for (final punctuation in ['。', '！', '？', '.', '!', '?', '”', '」']) {
         final index = segment.lastIndexOf(punctuation);
-        if (index > best * 0.6) {
+        if (index > cut * 0.6) {
           cut = index + 1;
           break;
         }
@@ -95,5 +136,29 @@ class TextPaginator {
     }
     final end = start + cut;
     return PageSlice(start: start, end: end, text: text.substring(start, end));
+  }
+
+  bool _fits(String text, int start, int length, TextPainter tp) {
+    final bounded = length.clamp(1, text.length - start).toInt();
+    tp.text = TextSpan(
+      text: text.substring(start, start + bounded),
+      style: style,
+    );
+    tp.layout(maxWidth: maxWidth);
+    return tp.size.height <= maxHeight;
+  }
+
+  int _estimatedCharsPerPage() {
+    final fontSize = (style.fontSize ?? 18).clamp(10.0, 40.0).toDouble();
+    final height = (style.height ?? 1.5).clamp(1.0, 3.0).toDouble();
+    final charsPerLine = (maxWidth / (fontSize * 0.56))
+        .floor()
+        .clamp(8, 240)
+        .toInt();
+    final lines = (maxHeight / (fontSize * height))
+        .floor()
+        .clamp(4, 160)
+        .toInt();
+    return (charsPerLine * lines * 0.92).round().clamp(16, 12000).toInt();
   }
 }

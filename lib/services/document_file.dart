@@ -7,12 +7,14 @@ class DocumentFile {
   final String name;
   final int size;
   final int? lastModifiedMillis;
+  final String? localPath;
 
   const DocumentFile({
     required this.uri,
     required this.name,
     required this.size,
     this.lastModifiedMillis,
+    this.localPath,
   });
 }
 
@@ -24,6 +26,21 @@ class DocumentFileChannel {
   static Future<DocumentFile?> openBookDocument() async {
     final raw = await _channel.invokeMapMethod<String, Object?>(
       'openBookDocument',
+    );
+    return _decodeDocument(raw);
+  }
+
+  static Future<DocumentFile?> consumePendingOpenDocument() async {
+    final raw = await _channel.invokeMapMethod<String, Object?>(
+      'consumePendingOpenDocument',
+    );
+    return _decodeDocument(raw);
+  }
+
+  static Future<DocumentFile?> importDocument(String uri) async {
+    final raw = await _channel.invokeMapMethod<String, Object?>(
+      'importDocument',
+      {'uri': uri},
     );
     return _decodeDocument(raw);
   }
@@ -47,6 +64,9 @@ class DocumentFileChannel {
           : '未命名',
       size: (raw['size'] as num?)?.toInt() ?? 0,
       lastModifiedMillis: (raw['lastModified'] as num?)?.toInt(),
+      localPath: (raw['localPath'] as String?)?.trim().isNotEmpty == true
+          ? raw['localPath'] as String
+          : null,
     );
   }
 

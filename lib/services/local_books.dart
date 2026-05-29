@@ -57,23 +57,30 @@ Future<rs.BookshelfEntry?> refreshLocalBookEntry(
   rs.BookshelfEntry book, {
   bool force = false,
 }) async {
-  final source = await describeLocalBook(book);
+  final migrated = await _migrateDocumentUriBook(book);
+  final workingBook = migrated ?? book;
+  final source = await describeLocalBook(workingBook);
   if (source == null) return null;
-  final signature = decodeBookSourceSignature(book.bookMetaJson);
+  final signature = decodeBookSourceSignature(workingBook.bookMetaJson);
   final signatureChanged =
       force ||
+      migrated != null ||
       signature.sizeBytes != source.sizeBytes ||
       signature.modifiedAtMillis != source.modifiedAtMillis;
   final shouldRefresh =
       signatureChanged ||
-      book.bookMetaJson == null ||
-      book.bookMetaJson!.isEmpty ||
-      book.cover == null ||
-      book.cover!.isEmpty;
-  if (!shouldRefresh) return null;
+      workingBook.bookMetaJson == null ||
+      workingBook.bookMetaJson!.isEmpty ||
+      workingBook.cover == null ||
+      workingBook.cover!.isEmpty;
+  if (!shouldRefresh) return migrated;
 
-  final meta = await _openLocalBookMeta(book, source);
-  final title = meta.title.trim().isEmpty ? source.name : meta.title;
+  final meta = await _openLocalBookMeta(workingBook, source);
+  final title = deriveLocalBookTitle(
+    metaTitle: meta.title,
+    sourceName: source.name,
+    pathOrUrl: workingBook.pathOrUrl,
+  );
   final online = await _lookupLocalMetadata(
     title,
     author: meta.author,
@@ -86,25 +93,25 @@ Future<rs.BookshelfEntry?> refreshLocalBookEntry(
     sourceModifiedAtMillis: source.modifiedAtMillis,
   );
   final next = rs.BookshelfEntry(
-    id: book.id,
+    id: workingBook.id,
     title: _preferText(title, online?.title),
     author: _preferText(meta.author, online?.author),
-    kind: isDocumentUriBook(book) ? '${meta.format}_uri' : meta.format,
-    pathOrUrl: book.pathOrUrl,
+    kind: meta.format,
+    pathOrUrl: workingBook.pathOrUrl,
     bookMetaJson: encoded,
     cover: resolveStoredBookCover(
-      currentCover: book.cover,
+      currentCover: workingBook.cover,
       embeddedCover: meta.coverDataUrl,
       onlineCover: online?.coverUrl,
     ),
-    lastChapter: book.lastChapter,
-    lastOffset: book.lastOffset,
+    lastChapter: workingBook.lastChapter,
+    lastOffset: workingBook.lastOffset,
     updatedAt: signatureChanged
         ? DateTime.now().millisecondsSinceEpoch ~/ 1000
-        : book.updatedAt,
-    sourceName: book.sourceName,
-    sourceJson: book.sourceJson,
-    tocUrl: book.tocUrl,
+        : workingBook.updatedAt,
+    sourceName: workingBook.sourceName,
+    sourceJson: workingBook.sourceJson,
+    tocUrl: workingBook.tocUrl,
   );
   return next == book ? null : next;
 }
@@ -151,6 +158,25 @@ Future<BookMetadata?> _lookupLocalMetadata(
   return _metadataLookup.lookupByTitle(title, author: author);
 }
 
+String deriveLocalBookTitle({
+  required String metaTitle,
+  required String sourceName,
+  required String pathOrUrl,
+}) {
+  final normalizedMetaTitle = metaTitle.trim();
+  final sourceStem = _displayFileStem(sourceName);
+  if (normalizedMetaTitle.isEmpty || normalizedMetaTitle == '未命名') {
+    return sourceStem.isEmpty ? '未命名' : sourceStem;
+  }
+  final localStem = _displayFileStem(_fileName(pathOrUrl));
+  if (sourceStem.isNotEmpty &&
+      sourceStem != localStem &&
+      normalizedMetaTitle == localStem) {
+    return sourceStem;
+  }
+  return normalizedMetaTitle;
+}
+
 String? resolveStoredBookCover({
   required String? currentCover,
   required String? embeddedCover,
@@ -179,14 +205,39 @@ Future<book_file.BookMeta> _openLocalBookMeta(
   LocalBookSourceInfo source,
 ) async {
   if (isDocumentUriBook(book)) {
-    final bytes = await DocumentFileChannel.readBytes(book.pathOrUrl);
-    return book_file.openBookBytes(
-      locator: book.pathOrUrl,
-      title: source.name,
-      bytes: bytes,
-    );
+    final migrated = await _migrateDocumentUriBook(book);
+    if (migrated == null) {
+      throw StateError('无法建立本地阅读缓存');
+    }
+    return book_file.openBookFile(path: migrated.pathOrUrl);
   }
   return book_file.openBookFile(path: book.pathOrUrl);
+}
+
+Future<rs.BookshelfEntry?> _migrateDocumentUriBook(
+  rs.BookshelfEntry book,
+) async {
+  if (!isDocumentUriBook(book) || !DocumentFileChannel.isAndroid) return null;
+  final imported = await DocumentFileChannel.importDocument(book.pathOrUrl);
+  final localPath = imported?.localPath;
+  if (imported == null || localPath == null || localPath.isEmpty) {
+    return null;
+  }
+  return rs.BookshelfEntry(
+    id: book.id,
+    title: book.title,
+    author: book.author,
+    kind: book.kind.replaceAll('_uri', ''),
+    pathOrUrl: localPath,
+    bookMetaJson: book.bookMetaJson,
+    cover: book.cover,
+    lastChapter: book.lastChapter,
+    lastOffset: book.lastOffset,
+    updatedAt: book.updatedAt,
+    sourceName: book.sourceName,
+    sourceJson: book.sourceJson,
+    tocUrl: book.tocUrl,
+  );
 }
 
 String _fileName(String path) {
@@ -196,4 +247,15 @@ String _fileName(String path) {
     return normalized;
   }
   return normalized.substring(index + 1);
+}
+
+String _displayFileStem(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return '';
+  final fileName = _fileName(trimmed);
+  final dot = fileName.lastIndexOf('.');
+  if (dot <= 0) {
+    return fileName;
+  }
+  return fileName.substring(0, dot);
 }

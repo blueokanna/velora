@@ -38,6 +38,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
   final Set<String> _selectedIds = <String>{};
   bool _isImporting = false;
   bool _isSyncing = false;
+  bool _isHandlingIncomingDocument = false;
 
   @override
   void initState() {
@@ -53,6 +54,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
       });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncLocalBooks();
+      _consumePendingOpenDocument();
     });
   }
 
@@ -67,6 +69,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _syncLocalBooks();
+      _consumePendingOpenDocument();
     }
   }
 
@@ -110,11 +113,16 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
     if (path == null) return;
     final stat = await File(path).stat();
     final meta = book_file.openBookFile(path: path);
+    final title = deriveLocalBookTitle(
+      metaTitle: meta.title,
+      sourceName: picked.files.first.name,
+      pathOrUrl: path,
+    );
     final entry = _mergeImportedEntry(
       await enrichBookEntryMetadata(
         rs.BookshelfEntry(
           id: 'local://${meta.locator}',
-          title: meta.title,
+          title: title,
           author: meta.author,
           kind: meta.format,
           pathOrUrl: meta.locator,
@@ -147,24 +155,41 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
   Future<void> _importAndroidBook() async {
     final doc = await DocumentFileChannel.openBookDocument();
     if (doc == null) return;
-    final bytes = await DocumentFileChannel.readBytes(doc.uri);
-    final meta = book_file.openBookBytes(
-      locator: doc.uri,
-      title: doc.name,
-      bytes: bytes,
+    final entry = await _importAndroidDocument(doc);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${AppLocalizations.of(context).imported}: ${entry.title}',
+        ),
+      ),
+    );
+  }
+
+  Future<rs.BookshelfEntry> _importAndroidDocument(DocumentFile doc) async {
+    final imported = await DocumentFileChannel.importDocument(doc.uri);
+    final localPath = imported?.localPath;
+    if (imported == null || localPath == null || localPath.isEmpty) {
+      throw StateError('无法建立本地阅读缓存');
+    }
+    final meta = book_file.openBookFile(path: localPath);
+    final title = deriveLocalBookTitle(
+      metaTitle: meta.title,
+      sourceName: imported.name,
+      pathOrUrl: localPath,
     );
     final entry = _mergeImportedEntry(
       await enrichBookEntryMetadata(
         rs.BookshelfEntry(
-          id: 'local-uri:${doc.uri}',
-          title: meta.title,
+          id: 'local://$localPath',
+          title: title,
           author: meta.author,
-          kind: '${meta.format}_uri',
-          pathOrUrl: doc.uri,
+          kind: meta.format,
+          pathOrUrl: localPath,
           bookMetaJson: encodeBookMeta(
             meta,
-            sourceSizeBytes: doc.size,
-            sourceModifiedAtMillis: doc.lastModifiedMillis,
+            sourceSizeBytes: imported.size,
+            sourceModifiedAtMillis: imported.lastModifiedMillis,
           ),
           cover: meta.coverDataUrl,
           lastChapter: 0,
@@ -177,14 +202,31 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
       ),
     );
     await ref.read(bookshelfProvider.notifier).upsert(entry);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${AppLocalizations.of(context).imported}: ${entry.title}',
+    return entry;
+  }
+
+  Future<void> _consumePendingOpenDocument() async {
+    if (!Platform.isAndroid || _isHandlingIncomingDocument || !mounted) {
+      return;
+    }
+    _isHandlingIncomingDocument = true;
+    try {
+      final doc = await DocumentFileChannel.consumePendingOpenDocument();
+      if (doc == null) return;
+      final entry = await _importAndroidDocument(doc);
+      if (!mounted) return;
+      final location = '/reader?bookId=${Uri.encodeQueryComponent(entry.id)}';
+      context.go(location, extra: entry);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${AppLocalizations.of(context).importFailed}: $error'),
         ),
-      ),
-    );
+      );
+    } finally {
+      _isHandlingIncomingDocument = false;
+    }
   }
 
   rs.BookshelfEntry _mergeImportedEntry(rs.BookshelfEntry entry) {
@@ -604,14 +646,14 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
     }
     if (isDocumentUriBook(book)) {
       final source = await describeLocalBook(book);
-      final fileName = _shareFileName(book, source?.name);
+      final imported = await DocumentFileChannel.importDocument(book.pathOrUrl);
+      final localPath = imported?.localPath;
+      if (imported == null || localPath == null || localPath.isEmpty) {
+        return null;
+      }
+      final fileName = _shareFileName(book, source?.name ?? imported.name);
       return (
-        [
-          XFile.fromData(
-            await DocumentFileChannel.readBytes(book.pathOrUrl),
-            mimeType: _shareMimeType(book, fileName),
-          ),
-        ],
+        [XFile(localPath, mimeType: _shareMimeType(book, fileName))],
         [fileName],
       );
     }

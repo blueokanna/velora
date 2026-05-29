@@ -1,15 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'rss_source.dart';
 import '../src/rust/api/book_source.dart' as bs;
 import '../state/sources.dart';
 
 class SourceRecommendationsService {
   const SourceRecommendationsService();
 
+  static const _rss = RssSourceService();
+
   static const cacheTtl = Duration(hours: 6);
+  static const _sourceTimeout = Duration(seconds: 8);
   static const maxSourceCacheEntries = 24;
   static const maxCacheEntries = 6;
   static const _sourceCacheKey = 'discover_recommendations_source_cache_v3';
@@ -20,7 +25,7 @@ class SourceRecommendationsService {
     int maxPerSource = 6,
     int maxTotal = 36,
     int maxSources = 10,
-    int concurrency = 4,
+    int concurrency = 6,
   }) async {
     final sampled = _sampleSources(
       sources.where((item) => item.enabled),
@@ -30,6 +35,7 @@ class SourceRecommendationsService {
       sampled,
       maxPerSource: maxPerSource,
       concurrency: concurrency,
+      prefs: null,
     );
     return _mergeBatches(batches, maxTotal: maxTotal);
   }
@@ -40,7 +46,7 @@ class SourceRecommendationsService {
     int maxPerSource = 6,
     int maxTotal = 36,
     int maxSources = 10,
-    int concurrency = 4,
+    int concurrency = 6,
   }) async {
     final sampled = _sampleSources(
       sources.where((item) => item.enabled),
@@ -50,6 +56,7 @@ class SourceRecommendationsService {
       sampled,
       maxPerSource: maxPerSource,
       concurrency: concurrency,
+      prefs: prefs,
     );
     await _saveSourceCachedMany(prefs, batches);
     return _mergeBatches(batches, maxTotal: maxTotal);
@@ -145,6 +152,7 @@ class SourceRecommendationsService {
     List<BookSourceModel> sampled, {
     required int maxPerSource,
     required int concurrency,
+    required SharedPreferences? prefs,
   }) async {
     final batches = <_SourceRecommendationBatch>[];
     for (var start = 0; start < sampled.length; start += concurrency) {
@@ -157,6 +165,7 @@ class SourceRecommendationsService {
             results: await _loadSingleSource(
               source,
               maxPerSource: maxPerSource,
+              prefs: prefs,
             ),
           );
         }),
@@ -232,21 +241,63 @@ class SourceRecommendationsService {
   Future<List<bs.SearchResult>> _loadSingleSource(
     BookSourceModel source, {
     required int maxPerSource,
+    required SharedPreferences? prefs,
   }) async {
+    if (source.isRssSource && prefs != null) {
+      return _rss.loadItems(prefs, source: source, maxItems: maxPerSource);
+    }
+    final exploreResults = await _loadExploreRecommendations(
+      source,
+      maxPerSource: maxPerSource,
+    );
+    if (exploreResults.isNotEmpty) {
+      return exploreResults;
+    }
     if (source.searchUrl.trim().isEmpty || source.searchList.trim().isEmpty) {
       return const [];
     }
     for (final keyword in _keywordsForSource(source)) {
       try {
         final results =
-            (await bs.sourceSearch(
-                  sourceJson: source.toJsonString(),
-                  keyword: keyword,
-                ))
+            (await bs
+                    .sourceSearch(
+                      sourceJson: source.toJsonString(),
+                      keyword: keyword,
+                    )
+                    .timeout(_sourceTimeout))
                 .where((item) => item.name.trim().isNotEmpty)
                 .take(maxPerSource)
                 .toList(growable: false);
         if (results.isNotEmpty) return results;
+      } catch (_) {}
+    }
+    return const [];
+  }
+
+  Future<List<bs.SearchResult>> _loadExploreRecommendations(
+    BookSourceModel source, {
+    required int maxPerSource,
+  }) async {
+    if (!source.supportsExploreRecommendations) {
+      return const [];
+    }
+    for (final entryUrl in source.exploreEntryUrls.take(3)) {
+      final exploreSource = source.toExploreSearchSource(entryUrl);
+      if (exploreSource == null) continue;
+      try {
+        final results =
+            (await bs
+                    .sourceSearch(
+                      sourceJson: exploreSource.toJsonString(),
+                      keyword: '',
+                    )
+                    .timeout(_sourceTimeout))
+                .where((item) => item.name.trim().isNotEmpty)
+                .take(maxPerSource)
+                .toList(growable: false);
+        if (results.isNotEmpty) {
+          return results;
+        }
       } catch (_) {}
     }
     return const [];
@@ -362,6 +413,21 @@ class SourceRecommendationsService {
       source.searchAuthor,
       source.searchBookUrl,
       source.searchCover,
+      source.bookSourceType.toString(),
+      source.enabledExplore.toString(),
+      source.exploreUrl,
+      source.exploreList,
+      source.exploreName,
+      source.exploreAuthor,
+      source.exploreBookUrl,
+      source.exploreCover,
+      source.rssArticles,
+      source.rssTitle,
+      source.rssPubDate,
+      source.rssDescription,
+      source.rssImage,
+      source.rssLink,
+      source.rssContent,
     ].join('|');
   }
 

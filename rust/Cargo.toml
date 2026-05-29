@@ -43,6 +43,7 @@ url = "2.5.8"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 roxmltree = "0.21.1"
 base64 = "0.22.1"
+memmap2 = "0.9.5"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

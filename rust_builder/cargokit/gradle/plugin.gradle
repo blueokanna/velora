@@ -118,18 +118,27 @@ class CargoKitPlugin implements Plugin<Project> {
             return;
         }
 
+        def androidExtension = plugin.project.extensions.findByName("android")
+        if (androidExtension == null) {
+            throw new GradleException("Flutter Android extension not found for CargoKit plugin.")
+        }
+
         def cargoBuildDir = "${project.buildDir}/build"
+        def projectAndroidExtension = project.extensions.findByName("android")
+        if (projectAndroidExtension == null) {
+            throw new GradleException("Android extension not found for CargoKit target project.")
+        }
 
         // Determine if the project is an application or library
         def isApplication = plugin.project.plugins.hasPlugin('com.android.application')
-        def variants = isApplication ? plugin.project.android.applicationVariants : plugin.project.android.libraryVariants
+        def variants = isApplication ? androidExtension.applicationVariants : androidExtension.libraryVariants
 
         variants.all { variant ->
 
             final buildType = variant.buildType.name
 
             def cargoOutputDir = "${project.buildDir}/jniLibs/${buildType}";
-            def jniLibs = project.android.sourceSets.maybeCreate(buildType).jniLibs;
+            def jniLibs = projectAndroidExtension.sourceSets.maybeCreate(buildType).jniLibs;
             jniLibs.srcDir(new File(cargoOutputDir))
 
             def List<String> platforms
@@ -154,7 +163,7 @@ class CargoKitPlugin implements Plugin<Project> {
                     return
                 }
 
-                if (plugin.project.android.ndkVersion == null) {
+                if (androidExtension.ndkVersion == null) {
                     throw new GradleException("Please set 'android.ndkVersion' in 'app/build.gradle'.")
                 }
 
@@ -162,10 +171,10 @@ class CargoKitPlugin implements Plugin<Project> {
                     buildMode = variant.buildType.name
                     buildDir = cargoBuildDir
                     outputDir = cargoOutputDir
-                    ndkVersion = plugin.project.android.ndkVersion
-                    sdkDirectory = plugin.project.android.sdkDirectory
-                    minSdkVersion = plugin.project.android.defaultConfig.minSdkVersion.apiLevel as int
-                    compileSdkVersion = plugin.project.android.compileSdkVersion.substring(8) as int
+                    ndkVersion = androidExtension.ndkVersion
+                    sdkDirectory = androidExtension.sdkDirectory
+                    minSdkVersion = androidExtension.defaultConfig.minSdkVersion.apiLevel as int
+                    compileSdkVersion = androidExtension.compileSdkVersion.substring(8) as int
                     targetPlatforms = platforms
                     pluginFile = CargoKitPlugin.file
                 }

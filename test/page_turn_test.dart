@@ -8,6 +8,7 @@ void main() {
     PageTurnEffectType effect = PageTurnEffectType.curl,
     VoidCallback? onReachStart,
     VoidCallback? onReachEnd,
+    IndexedWidgetBuilder? pageBuilder,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -18,10 +19,12 @@ void main() {
             effect: effect,
             onReachStart: onReachStart,
             onReachEnd: onReachEnd,
-            pageBuilder: (context, index) => ColoredBox(
-              color: Colors.white,
-              child: Center(child: Text('Page ${index + 1}')),
-            ),
+            pageBuilder:
+                pageBuilder ??
+                (context, index) => ColoredBox(
+                  color: Colors.white,
+                  child: Center(child: Text('Page ${index + 1}')),
+                ),
           ),
         ),
       ),
@@ -99,5 +102,36 @@ void main() {
 
     expect(reachStart, 1);
     expect(key.currentState?.debugCurrentPage, 0);
+  });
+
+  testWidgets('翻页预览期间会复用已构建页内容，避免每帧重建', (tester) async {
+    final key = GlobalKey<PageTurnViewState>();
+    var buildCount = 0;
+    await tester.pumpWidget(
+      buildHarness(
+        key: key,
+        pageBuilder: (context, index) {
+          buildCount += 1;
+          return ColoredBox(
+            color: Colors.white,
+            child: Center(child: Text('Cached ${index + 1}')),
+          );
+        },
+      ),
+    );
+
+    expect(buildCount, 1);
+
+    key.currentState!.debugPreview(PageTurnDirection.next, 0.18);
+    await tester.pump();
+    final firstPreviewBuildCount = buildCount;
+
+    key.currentState!.debugPreview(PageTurnDirection.next, 0.34);
+    await tester.pump();
+    key.currentState!.debugPreview(PageTurnDirection.next, 0.61);
+    await tester.pump();
+
+    expect(firstPreviewBuildCount, 3);
+    expect(buildCount, firstPreviewBuildCount);
   });
 }

@@ -6,9 +6,9 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `absolute_url`, `render_search_url`, `select_attr`, `select_resource_url`, `select_text`, `urlencoding_lite`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BookSource`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `absolute_url`, `apply_cleanup`, `convert_xpath_segment`, `element_text`, `extract_from_document`, `extract_from_element`, `extract_many_raw_cleanup_values`, `extract_many_with_rule`, `extract_raw_cleanup_value`, `extract_with_rule`, `find_matching_bracket`, `json_list_from_rule`, `json_nodes_from_rule`, `json_scalar_to_string`, `json_string_from_rule`, `looks_like_json_text`, `normalize_css_selector`, `normalize_regex_list_rule`, `normalize_rule`, `parse_json_path`, `parse_json_value`, `parse_selector`, `parse_xpath_like_rule`, `regex_rows_from_rule`, `regex_value_from_rule`, `render_search_url`, `select_all_matching`, `select_first_matching`, `split_cleanup`, `split_selector_mode`, `split_xpath_segments`, `text_matches`, `urlencoding_lite`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BookSource`, `ConvertedXPathSegment`, `ExtractMode`, `JsonPathPart`, `ParsedQuery`, `RegexRow`, `XPathLikeQuery`, `XPathSegment`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 Future<List<SearchResult>> sourceSearch({
   required String sourceJson,

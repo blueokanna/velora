@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -13,16 +14,22 @@ import '../../app_keys.dart';
 import '../../l10n/app_localizations.dart';
 import '../../services/document_file.dart';
 import '../../services/local_books.dart' as local_books;
+import '../../services/rss_source.dart';
 import '../../src/rust/api/book_file.dart' as book_file;
 import '../../src/rust/api/book_source.dart' as bs;
 import '../../src/rust/api/storage.dart' as rs;
 import '../../state/bookshelf.dart';
 import '../../state/settings.dart';
+import '../../state/sources.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/motion.dart';
 import '../../widgets/page_turn.dart';
+import 'android_static_layout.dart';
 import 'book_meta_codec.dart';
 import 'reader_bookmarks.dart';
+import 'reader_layout.dart';
+import 'reader_page_cache.dart';
+import 'reader_page_content.dart';
 import 'paginator.dart';
 
 class ReaderPage extends ConsumerStatefulWidget {
@@ -81,6 +88,7 @@ class _ReaderPerfBudget {
 class _ReaderChapterCache {
   final String text;
   final List<PageSlice> pages;
+  final int basePageIndex;
   final int nextOffset;
   final bool hasMore;
   final int lastPageIndex;
@@ -88,20 +96,39 @@ class _ReaderChapterCache {
   const _ReaderChapterCache({
     required this.text,
     required this.pages,
+    required this.basePageIndex,
     required this.nextOffset,
     required this.hasMore,
     required this.lastPageIndex,
   });
 }
 
+class _PendingRestoreFeedback {
+  final int chapterIndex;
+  final int targetPageIndex;
+  final int restoredFirstPageIndex;
+  final int restoredLastPageIndex;
+  final bool usedHotWindow;
+
+  const _PendingRestoreFeedback({
+    required this.chapterIndex,
+    required this.targetPageIndex,
+    required this.restoredFirstPageIndex,
+    required this.restoredLastPageIndex,
+    required this.usedHotWindow,
+  });
+}
+
 class _ReaderPageState extends ConsumerState<ReaderPage> {
+  static const _rss = RssSourceService();
+
   rs.BookshelfEntry? _book;
   List<_ReaderChapter> _chapters = const [];
-  List<int>? _bookBytes;
   String _chapterText = '';
   List<PageSlice> _pageSlices = const [];
   int _nextOffset = 0;
   int _chapterIndex = 0;
+  int _pageBaseIndex = 0;
   int _pageIndex = 0;
   bool _hasMorePages = false;
   bool _showOverlay = false;
@@ -110,7 +137,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   String? _error;
   final GlobalKey<PageTurnViewState> _viewKey = GlobalKey<PageTurnViewState>();
   final LinkedHashMap<int, _ReaderChapterCache> _chapterCache = LinkedHashMap();
+  final Set<int> _prefetchingChapters = <int>{};
+  final List<_PendingRestoreFeedback> _pendingRestoreFeedback =
+      <_PendingRestoreFeedback>[];
   Timer? _saveTimer;
+  ReaderPageCacheStore? _pageCacheStore;
   double _loadingProgress = 0.02;
   String _loadingDetail = '';
   bool _openingComplete = false;
@@ -187,25 +218,31 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   Future<void> _loadLocalBook(rs.BookshelfEntry book) async {
     final syncedBook = await _refreshLocalBookIfNeeded(book);
-    book_file.BookMeta? meta = decodeBookMeta(syncedBook.bookMetaJson);
+    final decodedMeta = decodeBookMetaRecord(syncedBook.bookMetaJson);
+    book_file.BookMeta? meta = decodedMeta?.meta;
+    final forceTxtReindex =
+        !_isDocumentUriBook(syncedBook) &&
+        _isTxtBook(syncedBook, meta) &&
+        (decodedMeta == null || decodedMeta.schemaVersion < 2);
     if (local_books.isDocumentUriBook(syncedBook)) {
-      final bytes =
-          _bookBytes ??
-          await DocumentFileChannel.readBytes(syncedBook.pathOrUrl);
-      _bookBytes = bytes;
-      _updateLoadingProgress(0.24, detail: syncedBook.title);
-      meta ??= book_file.openBookBytes(
-        locator: syncedBook.pathOrUrl,
-        title: syncedBook.title,
-        bytes: bytes,
-      );
-    } else {
-      _bookBytes = null;
-      _updateLoadingProgress(0.24, detail: syncedBook.title);
-      meta ??= book_file.openBookFile(path: syncedBook.pathOrUrl);
+      throw StateError('无法建立本地阅读缓存');
+    }
+    _updateLoadingProgress(0.24, detail: syncedBook.title);
+    if (forceTxtReindex || meta == null) {
+      meta = book_file.openBookFile(path: syncedBook.pathOrUrl);
     }
     final resolvedMeta = meta;
-    await _persistBookMetaIfNeeded(syncedBook, resolvedMeta);
+    await _persistBookMetaIfNeeded(
+      syncedBook,
+      resolvedMeta,
+      preferredSignature: await _resolveSourceSignature(
+        syncedBook,
+        decodedMeta?.sourceSignature ?? const BookSourceSignature(),
+      ),
+    );
+    _pageCacheStore = _canUsePersistentPageCache(syncedBook, resolvedMeta)
+        ? await ReaderPageCacheStore.open(path: syncedBook.pathOrUrl)
+        : null;
     final chapters = resolvedMeta.chapters
         .map(_ReaderChapter.fromBook)
         .toList(growable: false);
@@ -235,6 +272,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   }
 
   Future<void> _loadOnlineBook(rs.BookshelfEntry book) async {
+    _pageCacheStore = null;
+    if (RssSourceService.isSyntheticBookUrl(book.pathOrUrl)) {
+      await _loadRssBook(book);
+      return;
+    }
     final sourceJson = book.sourceJson;
     final tocUrl = book.tocUrl;
     if (sourceJson == null ||
@@ -258,11 +300,47 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     );
   }
 
-  Future<void> _persistBookMetaIfNeeded(
+  Future<void> _loadRssBook(rs.BookshelfEntry book) async {
+    final source = decodeBookSourceModelJson(book.sourceJson);
+    if (source == null || !source.isRssSource) {
+      throw StateError('RSS 书籍缺少可用书源配置');
+    }
+    final prefs = ref.read(sharedPreferencesProvider);
+    final entry = await _rss.ensureEntry(
+      prefs,
+      source: source,
+      syntheticUrl: book.pathOrUrl,
+      fallbackUrl: book.tocUrl,
+      fallbackTitle: book.title,
+    );
+    if (entry == null) {
+      throw StateError('RSS 条目不存在');
+    }
+    final chapterUrl = entry.link.trim().isEmpty ? book.tocUrl : entry.link;
+    final chapters = [
+      _ReaderChapter(
+        title: entry.title.trim().isEmpty ? book.title : entry.title,
+        start: BigInt.zero,
+        end: BigInt.zero,
+        url: chapterUrl,
+      ),
+    ];
+    if (!mounted) return;
+    setState(() {
+      _chapters = chapters;
+      _chapterIndex = 0;
+    });
+    _updateLoadingProgress(0.32, detail: chapters.first.title);
+    await _loadChapter(0, initialPageIndex: book.lastOffset.toInt());
+  }
+
+  Future<BookSourceSignature> _persistBookMetaIfNeeded(
     rs.BookshelfEntry book,
-    book_file.BookMeta meta,
-  ) async {
-    final signature = decodeBookSourceSignature(book.bookMetaJson);
+    book_file.BookMeta meta, {
+    BookSourceSignature? preferredSignature,
+  }) async {
+    final signature =
+        preferredSignature ?? decodeBookSourceSignature(book.bookMetaJson);
     final encoded = encodeBookMeta(
       meta,
       sourceSizeBytes: signature.sizeBytes,
@@ -273,7 +351,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       embeddedCover: meta.coverDataUrl,
       onlineCover: null,
     );
-    if (book.bookMetaJson == encoded && book.cover == nextCover) return;
+    if (book.bookMetaJson == encoded && book.cover == nextCover) {
+      return signature;
+    }
     await ref
         .read(bookshelfProvider.notifier)
         .upsert(
@@ -293,6 +373,35 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
             tocUrl: book.tocUrl,
           ),
         );
+    return signature;
+  }
+
+  Future<BookSourceSignature> _resolveSourceSignature(
+    rs.BookshelfEntry book,
+    BookSourceSignature current,
+  ) async {
+    if (book.kind == 'online' || _isDocumentUriBook(book)) {
+      return current;
+    }
+    if (current.sizeBytes != null && current.modifiedAtMillis != null) {
+      return current;
+    }
+    try {
+      final stat = await File(book.pathOrUrl).stat();
+      return BookSourceSignature(
+        sizeBytes: stat.size,
+        modifiedAtMillis: stat.modified.millisecondsSinceEpoch,
+      );
+    } catch (_) {
+      return current;
+    }
+  }
+
+  bool _canUsePersistentPageCache(
+    rs.BookshelfEntry book,
+    book_file.BookMeta? meta,
+  ) {
+    return !_isDocumentUriBook(book) && _isTxtBook(book, meta);
   }
 
   Future<void> _loadChapter(int index, {int initialPageIndex = 0}) async {
@@ -308,6 +417,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     setState(() {
       _loadingChapter = true;
       _chapterIndex = index;
+      _pageBaseIndex = 0;
       _pageIndex = 0;
       _pageSlices = const [];
       _nextOffset = 0;
@@ -320,6 +430,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     if (cached != null) {
       _chapterText = cached.text;
       _pageSlices = [...cached.pages];
+      _pageBaseIndex = cached.basePageIndex;
       _nextOffset = cached.nextOffset;
       _hasMorePages = cached.hasMore;
       await _repaginate(
@@ -344,6 +455,19 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     _ReaderChapter chapter,
   ) async {
     if (book.kind == 'online') {
+      if (RssSourceService.isSyntheticBookUrl(book.pathOrUrl)) {
+        final source = decodeBookSourceModelJson(book.sourceJson);
+        if (source == null || !source.isRssSource) {
+          throw StateError('RSS 章节缺少可用书源配置');
+        }
+        return _rss.loadReadableContent(
+          ref.read(sharedPreferencesProvider),
+          source: source,
+          syntheticUrl: book.pathOrUrl,
+          fallbackUrl: chapter.url ?? book.tocUrl,
+          fallbackTitle: chapter.title,
+        );
+      }
       final sourceJson = book.sourceJson;
       final url = chapter.url;
       if (sourceJson == null ||
@@ -355,16 +479,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       return bs.sourceChapterContent(sourceJson: sourceJson, chapterUrl: url);
     }
     if (_isDocumentUriBook(book)) {
-      final bytes =
-          _bookBytes ?? await DocumentFileChannel.readBytes(book.pathOrUrl);
-      _bookBytes = bytes;
-      return book_file.readBookChapterBytes(
-        locator: book.pathOrUrl,
-        title: book.title,
-        bytes: bytes,
-        start: chapter.start,
-        end: chapter.end,
-      );
+      throw StateError('无法建立本地阅读缓存');
     }
     return book_file.readBookChapterFile(
       path: book.pathOrUrl,
@@ -377,17 +492,32 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     return local_books.isDocumentUriBook(book);
   }
 
+  bool _isTxtBook(rs.BookshelfEntry book, book_file.BookMeta? meta) {
+    final format = ((meta?.format ?? book.kind).replaceAll(
+      '_uri',
+      '',
+    )).trim().toLowerCase();
+    return format == 'txt';
+  }
+
   Future<void> _repaginate({
     required int targetPageIndex,
     bool repaginatingExisting = false,
   }) async {
+    final settings = ref.read(settingsProvider);
     if (!repaginatingExisting) {
       _pageSlices = const [];
+      _pageBaseIndex = 0;
       _nextOffset = 0;
       _hasMorePages = _chapterText.isNotEmpty;
+      await _restorePersistedPageCache(
+        settings,
+        targetPageIndex: targetPageIndex,
+      );
     }
     await _ensurePagesFor(
       targetPageIndex,
+      settings: settings,
       onProgress: (ratio) {
         final start = _openingComplete ? 0.34 : 0.6;
         final span = _openingComplete ? 0.58 : 0.36;
@@ -400,7 +530,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     if (!mounted) return;
     final bounded = _pageSlices.isEmpty
         ? 0
-        : targetPageIndex.clamp(0, _pageSlices.length - 1).toInt();
+        : (targetPageIndex - _pageBaseIndex)
+              .clamp(0, _pageSlices.length - 1)
+              .toInt();
     setState(() {
       _pageIndex = bounded;
       _loadingChapter = false;
@@ -408,25 +540,34 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       _openingComplete = true;
     });
     _rememberChapterCache(_chapterIndex);
+    unawaited(_persistCurrentPageCache());
+    unawaited(_prefetchAround(_chapterIndex));
+    unawaited(_prebindNativeNeighborPages(bounded));
     _viewKey.currentState?.jumpTo(bounded);
   }
 
   Future<void> _ensurePagesFor(
     int targetPageIndex, {
     ValueChanged<double>? onProgress,
+    AppSettings? settings,
   }) async {
     if (_chapterText.isEmpty) return;
     final budget = _budget();
+    final AppSettings effectiveSettings =
+        settings ?? ref.read(settingsProvider);
     final required = (targetPageIndex + budget.preloadTrigger + 1).clamp(
       budget.initialPages,
       1 << 20,
     );
-    while (_pageSlices.length < required && _hasMorePages) {
-      final paginator = _buildPaginator(ref.read(settingsProvider));
-      final window = paginator.paginateWindow(
+    while (_pageBaseIndex + _pageSlices.length < required && _hasMorePages) {
+      final window = await _paginateWindow(
         _chapterText,
+        settings: effectiveSettings,
         startOffset: _nextOffset,
-        maxPages: (required - _pageSlices.length).clamp(1, 6),
+        maxPages: (required - (_pageBaseIndex + _pageSlices.length)).clamp(
+          1,
+          6,
+        ),
       );
       _pageSlices = [..._pageSlices, ...window.pages];
       _nextOffset = window.nextOffset;
@@ -434,10 +575,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       onProgress?.call(
         required == 0
             ? 1
-            : (_pageSlices.length / required).clamp(0, 1).toDouble(),
+            : ((_pageBaseIndex + _pageSlices.length) / required)
+                  .clamp(0, 1)
+                  .toDouble(),
       );
       if (window.pages.isEmpty) break;
-      if (_pageSlices.length < required && _hasMorePages) {
+      if (_pageBaseIndex + _pageSlices.length < required && _hasMorePages) {
         await SchedulerBinding.instance.endOfFrame;
       }
     }
@@ -448,9 +591,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     _loadingMore = true;
     try {
       final budget = _budget();
-      final paginator = _buildPaginator(ref.read(settingsProvider));
-      final window = paginator.paginateWindow(
+      final settings = ref.read(settingsProvider);
+      final window = await _paginateWindow(
         _chapterText,
+        settings: settings,
         startOffset: _nextOffset,
         maxPages: budget.appendPages,
       );
@@ -461,6 +605,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         _hasMorePages = window.hasMore;
       });
       _rememberChapterCache(_chapterIndex);
+      unawaited(_persistCurrentPageCache());
+      unawaited(_prebindNativeNeighborPages(_pageIndex));
       return window.pages.isNotEmpty;
     } finally {
       _loadingMore = false;
@@ -486,18 +632,64 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     );
   }
 
-  TextPaginator _buildPaginator(AppSettings settings) {
+  TextPaginator _buildPaginator(
+    AppSettings settings, {
+    ReaderLayoutSpec? layoutSpec,
+  }) {
+    final spec = layoutSpec ?? _buildLayoutSpec(settings);
+    return TextPaginator(
+      style: _readerTextStyle(context, settings),
+      maxWidth: spec.maxWidth,
+      maxHeight: spec.maxHeight,
+    );
+  }
+
+  ReaderLayoutSpec _buildLayoutSpec(AppSettings settings) {
     final padding = settings.pagePadding;
     final size = MediaQuery.sizeOf(context);
     final safePadding = MediaQuery.paddingOf(context);
-    return TextPaginator(
-      style: _readerTextStyle(context, settings),
+    final style = _readerTextStyle(context, settings);
+    final colorScheme = Theme.of(context).colorScheme;
+    return ReaderLayoutSpec(
+      rendererKind: Platform.isAndroid
+          ? ReaderRendererKind.androidStaticLayout
+          : ReaderRendererKind.flutterSegments,
       maxWidth: (size.width - padding * 2)
           .clamp(160.0, double.infinity)
           .toDouble(),
       maxHeight: (size.height - padding * 2 - safePadding.vertical - 32)
           .clamp(240.0, double.infinity)
           .toDouble(),
+      fontSize: style.fontSize ?? settings.fontScale.value,
+      lineHeight: style.height ?? settings.lineHeight,
+      fontFamilyKey: settings.readerFont.name,
+      textColor: style.color ?? colorScheme.onSurface,
+      backgroundColor: colorScheme.surface,
+    );
+  }
+
+  Future<PageSliceWindow> _paginateWindow(
+    String text, {
+    required AppSettings settings,
+    required int startOffset,
+    required int maxPages,
+  }) async {
+    final layoutSpec = _buildLayoutSpec(settings);
+    if (layoutSpec.isAndroidStaticLayout) {
+      try {
+        return await AndroidStaticLayoutPaginator.paginateWindow(
+          text: text,
+          startOffset: startOffset,
+          maxPages: maxPages,
+          layout: layoutSpec,
+        );
+      } catch (_) {}
+    }
+    final paginator = _buildPaginator(settings, layoutSpec: layoutSpec);
+    return paginator.paginateWindow(
+      text,
+      startOffset: startOffset,
+      maxPages: maxPages,
     );
   }
 
@@ -514,12 +706,17 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 800), () {
+    _saveTimer = Timer(const Duration(milliseconds: 800), () async {
       final book = _book;
       if (book == null) return;
-      ref
+      await ref
           .read(bookshelfProvider.notifier)
-          .updateProgress(book.id, _chapterIndex, BigInt.from(_pageIndex));
+          .updateProgress(
+            book.id,
+            _chapterIndex,
+            BigInt.from(_absolutePageIndex()),
+          );
+      await _persistCurrentPageCache();
     });
   }
 
@@ -527,6 +724,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     setState(() => _pageIndex = page);
     _rememberChapterCache(_chapterIndex);
     _scheduleSave();
+    unawaited(_prebindNativeNeighborPages(page));
     final budget = _budget();
     if (_pageSlices.length - page <= budget.preloadTrigger) {
       unawaited(_appendMorePages());
@@ -558,9 +756,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     if (cached.pages.isEmpty) {
       return 0;
     }
-    if (!cached.hasMore) {
-      return cached.pages.length - 1;
-    }
     return cached.lastPageIndex;
   }
 
@@ -575,12 +770,67 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     _chapterCache[chapterIndex] = _ReaderChapterCache(
       text: _chapterText,
       pages: List<PageSlice>.unmodifiable(_pageSlices),
+      basePageIndex: _pageBaseIndex,
       nextOffset: _nextOffset,
       hasMore: _hasMorePages,
-      lastPageIndex: _pageIndex.clamp(0, _pageSlices.length - 1).toInt(),
+      lastPageIndex: _absolutePageIndex(),
     );
     while (_chapterCache.length > 3) {
       _chapterCache.remove(_chapterCache.keys.first);
+    }
+  }
+
+  Future<void> _prefetchAround(int chapterIndex) async {
+    await _prefetchChapter(chapterIndex + 1);
+  }
+
+  Future<void> _prefetchChapter(int index) async {
+    if (index < 0 || index >= _chapters.length) return;
+    if (_chapterCache.containsKey(index) ||
+        _prefetchingChapters.contains(index)) {
+      return;
+    }
+    final book = _book;
+    if (book == null) return;
+    _prefetchingChapters.add(index);
+    try {
+      final chapter = _chapters[index];
+      final content = await _chapterContent(book, chapter);
+      if (!mounted || index == _chapterIndex) return;
+      final text = '${chapter.title}\n\n$content';
+      final budget = _budget();
+      final settings = ref.read(settingsProvider);
+      final window = await _paginateWindow(
+        text,
+        settings: settings,
+        startOffset: 0,
+        maxPages: budget.initialPages,
+      );
+      if (!mounted || index == _chapterIndex || window.pages.isEmpty) return;
+      _chapterCache.remove(index);
+      _chapterCache[index] = _ReaderChapterCache(
+        text: text,
+        pages: List<PageSlice>.unmodifiable(window.pages),
+        basePageIndex: 0,
+        nextOffset: window.nextOffset,
+        hasMore: window.hasMore,
+        lastPageIndex: 0,
+      );
+      while (_chapterCache.length > 4) {
+        _chapterCache.remove(_chapterCache.keys.first);
+      }
+      await _persistPageCacheFor(
+        chapterIndex: index,
+        chapterText: text,
+        basePageIndex: 0,
+        pages: window.pages,
+        nextOffset: window.nextOffset,
+        hasMore: window.hasMore,
+        lastPageIndex: 0,
+      );
+    } catch (_) {
+    } finally {
+      _prefetchingChapters.remove(index);
     }
   }
 
@@ -598,6 +848,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   }
 
   Future<void> _handleReachStart() async {
+    if (_pageBaseIndex > 0) {
+      await _restoreWindowAround((_pageBaseIndex - 1).clamp(0, 1 << 20));
+      return;
+    }
     if (_chapterIndex <= 0) return;
     final previousIndex = _chapterIndex - 1;
     final cached = _chapterCache[previousIndex];
@@ -607,12 +861,74 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     await _gotoChapter(previousIndex, initialPageIndex: targetPage);
   }
 
+  int _absolutePageIndex() {
+    return _pageBaseIndex + _pageIndex;
+  }
+
+  Future<void> _restoreWindowAround(int targetPageIndex) async {
+    if (_chapterText.isEmpty) return;
+    final settings = ref.read(settingsProvider);
+    _rememberChapterCache(_chapterIndex);
+    setState(() {
+      _loadingMore = true;
+      _pageSlices = const [];
+      _pageBaseIndex = 0;
+      _nextOffset = 0;
+      _hasMorePages = _chapterText.isNotEmpty;
+    });
+    try {
+      await _restorePersistedPageCache(
+        settings,
+        targetPageIndex: targetPageIndex,
+      );
+      await _ensurePagesFor(targetPageIndex, settings: settings);
+      if (!mounted || _pageSlices.isEmpty) return;
+      final bounded = (targetPageIndex - _pageBaseIndex)
+          .clamp(0, _pageSlices.length - 1)
+          .toInt();
+      setState(() {
+        _pageIndex = bounded;
+      });
+      _rememberChapterCache(_chapterIndex);
+      unawaited(_persistCurrentPageCache());
+      unawaited(_prebindNativeNeighborPages(bounded));
+      _viewKey.currentState?.jumpTo(bounded);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingMore = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _prebindNativeNeighborPages(int localPageIndex) async {
+    final settings = ref.read(settingsProvider);
+    final layoutSpec = _buildLayoutSpec(settings);
+    if (!layoutSpec.isAndroidStaticLayout || _pageSlices.isEmpty) {
+      return;
+    }
+    final texts = <String>[];
+    for (final offset in const [-1, 0, 1]) {
+      final index = localPageIndex + offset;
+      if (index < 0 || index >= _pageSlices.length) {
+        continue;
+      }
+      texts.add(_pageSlices[index].text);
+    }
+    await AndroidStaticLayoutPaginator.prebindPages(
+      texts: texts,
+      layout: layoutSpec,
+    );
+  }
+
   Future<void> _showBookmarks(BuildContext context) async {
     final book = _book;
     if (book == null) return;
     final store = ref.read(readerBookmarksStoreProvider);
     var bookmarks = store.list(book.id);
-    final currentId = '$book.id::$_chapterIndex::$_pageIndex';
+    final currentAbsolutePageIndex = _absolutePageIndex();
+    final currentId = '$book.id::$_chapterIndex::$currentAbsolutePageIndex';
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -643,7 +959,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                               bookTitle: book.title,
                               chapterIndex: _chapterIndex,
                               chapterTitle: _chapters[_chapterIndex].title,
-                              pageIndex: _pageIndex,
+                              pageIndex: currentAbsolutePageIndex,
                               preview: _pageSlices[_pageIndex].text
                                   .replaceAll('\n', ' ')
                                   .trim(),
@@ -722,6 +1038,28 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     );
   }
 
+  Future<void> _showDiagnostics(BuildContext context) async {
+    final store = _pageCacheStore;
+    if (store == null) return;
+    await _persistCurrentPageCache();
+    final telemetry = await store.readTelemetry(
+      layoutKey: _buildLayoutSpec(ref.read(settingsProvider)).cacheKey,
+    );
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => _ReaderDiagnosticsSheet(
+        telemetry: telemetry,
+        chapterIndex: _chapterIndex,
+        absolutePageIndex: _absolutePageIndex(),
+        visiblePageCount: _pageSlices.length,
+        pageBaseIndex: _pageBaseIndex,
+      ),
+    );
+  }
+
   void _showToc(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
@@ -771,8 +1109,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       builder: (context) => Consumer(
         builder: (context, ref, child) {
           final settings = ref.watch(settingsProvider);
+          final notifier = ref.read(settingsProvider.notifier);
           final l10n = AppLocalizations.of(context);
           final mediaQuery = MediaQuery.of(context);
+          var previewFontSize = settings.fontScale.value;
+          var previewLineHeight = settings.lineHeight;
           return AnimatedPadding(
             duration: M3Motion.short4,
             curve: Curves.easeOutCubic,
@@ -781,124 +1122,133 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
               constraints: BoxConstraints(
                 maxHeight: mediaQuery.size.height * 0.82,
               ),
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  16,
-                  16,
-                  24 + mediaQuery.padding.bottom,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      l10n.readerSettings,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(l10n.readerFont),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: ReaderFontPreset.values
-                          .map(
-                            (preset) => ChoiceChip(
-                              label: Text(_fontLabel(preset)),
-                              selected: settings.readerFont == preset,
-                              onSelected: (_) {
-                                ref
-                                    .read(settingsProvider.notifier)
-                                    .update(
-                                      (previous) =>
-                                          previous.copyWith(readerFont: preset),
-                                    );
-                                unawaited(
-                                  _repaginate(targetPageIndex: _pageIndex),
-                                );
-                              },
-                            ),
-                          )
-                          .toList(),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(l10n.fontSize),
-                    Slider(
-                      min: 14,
-                      max: 28,
-                      divisions: 14,
-                      value: settings.fontScale.value,
-                      label: '${settings.fontScale.value.toInt()}',
-                      onChanged: (value) {
-                        final scale = value <= 17
-                            ? ReaderFontScale.small
-                            : value <= 19
-                            ? ReaderFontScale.normal
-                            : value <= 21
-                            ? ReaderFontScale.large
-                            : ReaderFontScale.xLarge;
-                        ref
-                            .read(settingsProvider.notifier)
-                            .update(
-                              (previous) => previous.copyWith(fontScale: scale),
-                            );
-                        unawaited(_repaginate(targetPageIndex: _pageIndex));
-                      },
-                    ),
-                    Text(l10n.lineHeight),
-                    Slider(
-                      min: 1.2,
-                      max: 2.4,
-                      divisions: 12,
-                      value: settings.lineHeight,
-                      label: settings.lineHeight.toStringAsFixed(2),
-                      onChanged: (value) {
-                        ref
-                            .read(settingsProvider.notifier)
-                            .update(
-                              (previous) =>
-                                  previous.copyWith(lineHeight: value),
-                            );
-                        unawaited(_repaginate(targetPageIndex: _pageIndex));
-                      },
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l10n.keepScreenOn),
-                      value: settings.keepScreenOn,
-                      onChanged: (value) {
-                        ref
-                            .read(settingsProvider.notifier)
-                            .update(
-                              (previous) =>
-                                  previous.copyWith(keepScreenOn: value),
-                            );
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    Text(l10n.pageTurnEffect),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: PageTurnEffect.values
-                          .map(
-                            (effect) => ChoiceChip(
-                              label: Text(_effectLabel(context, effect)),
-                              selected: settings.pageTurnEffect == effect,
-                              onSelected: (_) => ref
-                                  .read(settingsProvider.notifier)
-                                  .update(
-                                    (previous) => previous.copyWith(
-                                      pageTurnEffect: effect,
-                                    ),
+              child: StatefulBuilder(
+                builder: (context, setSheetState) => SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    16,
+                    16,
+                    24 + mediaQuery.padding.bottom,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.readerSettings,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(l10n.readerFont),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: ReaderFontPreset.values
+                            .map(
+                              (preset) => ChoiceChip(
+                                label: Text(
+                                  _fontLabel(preset),
+                                  style: AppTheme.readingTextStyle(
+                                    Theme.of(context).textTheme.titleSmall ??
+                                        const TextStyle(fontSize: 14),
+                                    preset,
                                   ),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  ],
+                                ),
+                                selected: settings.readerFont == preset,
+                                onSelected: (_) {
+                                  notifier.update(
+                                    (previous) =>
+                                        previous.copyWith(readerFont: preset),
+                                  );
+                                  unawaited(
+                                    _repaginate(targetPageIndex: _pageIndex),
+                                  );
+                                },
+                              ),
+                            )
+                            .toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(l10n.fontSize),
+                      Slider(
+                        min: 14,
+                        max: 28,
+                        divisions: 14,
+                        value: previewFontSize,
+                        label: '${previewFontSize.toInt()}',
+                        onChanged: (value) {
+                          setSheetState(() => previewFontSize = value);
+                        },
+                        onChangeEnd: (value) {
+                          final scale = value <= 17
+                              ? ReaderFontScale.small
+                              : value <= 19
+                              ? ReaderFontScale.normal
+                              : value <= 21
+                              ? ReaderFontScale.large
+                              : ReaderFontScale.xLarge;
+                          if (scale == settings.fontScale) {
+                            return;
+                          }
+                          notifier.update(
+                            (previous) => previous.copyWith(fontScale: scale),
+                          );
+                          unawaited(_repaginate(targetPageIndex: _pageIndex));
+                        },
+                      ),
+                      Text(l10n.lineHeight),
+                      Slider(
+                        min: 1.2,
+                        max: 2.4,
+                        divisions: 12,
+                        value: previewLineHeight,
+                        label: previewLineHeight.toStringAsFixed(2),
+                        onChanged: (value) {
+                          setSheetState(() => previewLineHeight = value);
+                        },
+                        onChangeEnd: (value) {
+                          if ((value - settings.lineHeight).abs() < 0.001) {
+                            return;
+                          }
+                          notifier.update(
+                            (previous) => previous.copyWith(lineHeight: value),
+                          );
+                          unawaited(_repaginate(targetPageIndex: _pageIndex));
+                        },
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(l10n.keepScreenOn),
+                        value: settings.keepScreenOn,
+                        onChanged: (value) {
+                          notifier.update(
+                            (previous) =>
+                                previous.copyWith(keepScreenOn: value),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(l10n.pageTurnEffect),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: PageTurnEffect.values
+                            .map(
+                              (effect) => ChoiceChip(
+                                label: Text(_effectLabel(context, effect)),
+                                selected: settings.pageTurnEffect == effect,
+                                onSelected: (_) => notifier.update(
+                                  (previous) =>
+                                      previous.copyWith(pageTurnEffect: effect),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -930,14 +1280,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   }
 
   String _pageCountLabel() {
-    final total = _pageSlices.length;
-    final suffix = _hasMorePages ? '+' : '';
-    return '${_pageIndex + 1} / $total$suffix';
-  }
-
-  void _openAppSettings() {
-    setState(() => _showOverlay = false);
-    context.go('/settings');
+    final current = _absolutePageIndex() + 1;
+    final total = _pageBaseIndex + _pageSlices.length;
+    final suffix = (_hasMorePages || _pageBaseIndex > 0) ? '+' : '';
+    return '$current / $total$suffix';
   }
 
   Future<void> _shareCurrentBook(BuildContext originContext) async {
@@ -985,14 +1331,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     }
     if (local_books.isDocumentUriBook(book)) {
       final source = await local_books.describeLocalBook(book);
-      final fileName = _shareFileName(book, source?.name);
+      final imported = await DocumentFileChannel.importDocument(book.pathOrUrl);
+      final localPath = imported?.localPath;
+      if (imported == null || localPath == null || localPath.isEmpty) {
+        return null;
+      }
+      final fileName = _shareFileName(book, source?.name ?? imported.name);
       return (
-        [
-          XFile.fromData(
-            await DocumentFileChannel.readBytes(book.pathOrUrl),
-            mimeType: _shareMimeType(book, fileName),
-          ),
-        ],
+        [XFile(localPath, mimeType: _shareMimeType(book, fileName))],
         [fileName],
       );
     }
@@ -1061,6 +1407,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final colorScheme = Theme.of(context).colorScheme;
+    final layoutSpec = _buildLayoutSpec(settings);
+    final readerTextStyle = _readerTextStyle(context, settings);
 
     if (_error != null) {
       return PopScope(
@@ -1133,12 +1481,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       pageCount: _pageSlices.length,
       initialPage: _pageIndex,
       effect: effect,
+      onTapCenter: () => setState(() => _showOverlay = !_showOverlay),
       onPageChanged: _onPageChanged,
       onReachEnd: () => unawaited(_handleReachEnd()),
       onReachStart: () => unawaited(_handleReachStart()),
       pageBuilder: (context, index) => _ReaderPageView(
         text: _pageSlices[index].text,
-        textStyle: _readerTextStyle(context, settings),
+        textStyle: readerTextStyle,
+        layoutSpec: layoutSpec,
         padding: settings.pagePadding,
         backgroundColor: colorScheme.surface,
         footer: _ReaderFooter(
@@ -1157,10 +1507,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         backgroundColor: colorScheme.surface,
         body: Stack(
           children: [
-            ReaderTapRegion(
-              onTapCenter: () => setState(() => _showOverlay = !_showOverlay),
-              child: KeyedSubtree(key: AppKeys.readerViewport, child: reader),
-            ),
+            KeyedSubtree(key: AppKeys.readerViewport, child: reader),
             AnimatedSwitcher(
               duration: M3Motion.medium2,
               switchInCurve: M3Motion.emphasizedDecelerate,
@@ -1179,11 +1526,13 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                       onNextChapter: () => _gotoChapter(_chapterIndex + 1),
                       onShowToc: () => _showToc(context),
                       onShowBookmarks: () => _showBookmarks(context),
+                      onShowDiagnostics: _pageCacheStore == null
+                          ? null
+                          : () => _showDiagnostics(context),
                       onShare: (shareContext) =>
                           _shareCurrentBook(shareContext),
                       onClose: () => setState(() => _showOverlay = false),
                       onShowReaderSettings: () => _showReaderSettings(context),
-                      onOpenAppSettings: _openAppSettings,
                       onJumpToPage: (page) =>
                           _viewKey.currentState?.jumpTo(page),
                     )
@@ -1218,6 +1567,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 class _ReaderPageView extends StatelessWidget {
   final String text;
   final TextStyle textStyle;
+  final ReaderLayoutSpec layoutSpec;
   final double padding;
   final Color backgroundColor;
   final Widget footer;
@@ -1225,6 +1575,7 @@ class _ReaderPageView extends StatelessWidget {
   const _ReaderPageView({
     required this.text,
     required this.textStyle,
+    required this.layoutSpec,
     required this.padding,
     required this.backgroundColor,
     required this.footer,
@@ -1232,23 +1583,233 @@ class _ReaderPageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: AppKeys.readerPageBody,
-      color: backgroundColor,
-      padding: EdgeInsets.fromLTRB(
-        padding,
-        padding + MediaQuery.paddingOf(context).top,
-        padding,
-        padding,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: Text(text, style: textStyle)),
-          footer,
-        ],
+    return RepaintBoundary(
+      child: Container(
+        key: AppKeys.readerPageBody,
+        color: backgroundColor,
+        padding: EdgeInsets.fromLTRB(
+          padding,
+          padding + MediaQuery.paddingOf(context).top,
+          padding,
+          padding,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ReaderPageContent(
+                text: text,
+                textStyle: textStyle,
+                layoutSpec: layoutSpec,
+              ),
+            ),
+            footer,
+          ],
+        ),
       ),
     );
+  }
+}
+
+extension on _ReaderPageState {
+  Future<void> _restorePersistedPageCache(
+    AppSettings settings, {
+    required int targetPageIndex,
+  }) async {
+    final store = _pageCacheStore;
+    if (store == null || _chapterText.isEmpty) return;
+    final persisted = await store.readChapter(
+      layoutKey: _buildLayoutSpec(settings).cacheKey,
+      chapterIndex: _chapterIndex,
+      targetPageIndex: targetPageIndex,
+      text: _chapterText,
+    );
+    if (persisted == null) return;
+    final pages = persisted.materialize(_chapterText);
+    if (pages.isEmpty) return;
+    _pageSlices = pages;
+    _pageBaseIndex = persisted.basePageIndex;
+    _nextOffset = persisted.nextOffset;
+    _hasMorePages = persisted.hasMore;
+    _pageIndex = (persisted.lastPageIndex - persisted.basePageIndex)
+        .clamp(0, pages.length - 1)
+        .toInt();
+    _pendingRestoreFeedback.add(
+      _PendingRestoreFeedback(
+        chapterIndex: _chapterIndex,
+        targetPageIndex: targetPageIndex,
+        restoredFirstPageIndex: persisted.restoredFirstPageIndex,
+        restoredLastPageIndex: persisted.restoredLastPageIndex,
+        usedHotWindow: persisted.usedHotWindow,
+      ),
+    );
+  }
+
+  Future<void> _persistCurrentPageCache() {
+    return _persistPageCacheFor(
+      chapterIndex: _chapterIndex,
+      chapterText: _chapterText,
+      basePageIndex: _pageBaseIndex,
+      pages: _pageSlices,
+      nextOffset: _nextOffset,
+      hasMore: _hasMorePages,
+      lastPageIndex: _absolutePageIndex(),
+    );
+  }
+
+  Future<void> _persistPageCacheFor({
+    required int chapterIndex,
+    required String chapterText,
+    required int basePageIndex,
+    required List<PageSlice> pages,
+    required int nextOffset,
+    required bool hasMore,
+    required int lastPageIndex,
+  }) async {
+    final store = _pageCacheStore;
+    if (store == null || chapterText.isEmpty || pages.isEmpty || !mounted) {
+      return;
+    }
+    final layoutKey = _buildLayoutSpec(ref.read(settingsProvider)).cacheKey;
+    final feedbacks = await _collectPersistFeedback(
+      chapterIndex: chapterIndex,
+      basePageIndex: basePageIndex,
+      pages: pages,
+    );
+    await store.writeChapter(
+      layoutKey: layoutKey,
+      chapterIndex: chapterIndex,
+      basePageIndex: basePageIndex,
+      startOffset: pages.first.start,
+      pages: pages,
+      nextOffset: nextOffset,
+      hasMore: hasMore,
+      lastPageIndex: lastPageIndex,
+    );
+    for (final feedback in feedbacks) {
+      await store.reportFeedback(
+        layoutKey: layoutKey,
+        chapterIndex: chapterIndex,
+        feedback: feedback,
+      );
+    }
+  }
+
+  Future<List<ReaderPageCacheFeedback>> _collectPersistFeedback({
+    required int chapterIndex,
+    required int basePageIndex,
+    required List<PageSlice> pages,
+  }) async {
+    final restoreFeedbacks = _pendingRestoreFeedback
+        .where((item) => item.chapterIndex == chapterIndex)
+        .toList(growable: false);
+    _pendingRestoreFeedback.removeWhere(
+      (item) => item.chapterIndex == chapterIndex,
+    );
+    final layoutSpec = _buildLayoutSpec(ref.read(settingsProvider));
+    final nativeStats =
+        chapterIndex == _chapterIndex && layoutSpec.isAndroidStaticLayout
+        ? await AndroidStaticLayoutPaginator.drainStats()
+        : AndroidStaticLayoutStats.empty;
+    if (restoreFeedbacks.isEmpty && !nativeStats.hasData) {
+      return const [];
+    }
+    final currentAbsolutePage = chapterIndex == _chapterIndex
+        ? _absolutePageIndex()
+        : basePageIndex;
+    final currentLastPageIndex = basePageIndex + pages.length - 1;
+    if (restoreFeedbacks.isEmpty) {
+      return [
+        ReaderPageCacheFeedback(
+          targetPageIndex: currentAbsolutePage,
+          restoredFirstPageIndex: basePageIndex,
+          restoredLastPageIndex: currentLastPageIndex,
+          usedHotWindow: basePageIndex > 0,
+          recordRestoreEvent: false,
+          bindTotalMicros: nativeStats.bindTotalMicros,
+          bindSampleCount: nativeStats.bindSampleCount,
+          bindMaxMicros: nativeStats.bindMaxMicros,
+          layoutTotalMicros: nativeStats.layoutTotalMicros,
+          layoutSampleCount: nativeStats.layoutSampleCount,
+          layoutMaxMicros: nativeStats.layoutMaxMicros,
+          prebindRequestCount: nativeStats.prebindRequestCount,
+          prebindHitCount: nativeStats.prebindHitCount,
+          visiblePreboundBindTotalMicros:
+              nativeStats.visiblePreboundBindTotalMicros,
+          visiblePreboundBindSampleCount:
+              nativeStats.visiblePreboundBindSampleCount,
+          visiblePreboundBindMaxMicros:
+              nativeStats.visiblePreboundBindMaxMicros,
+          visiblePreboundLayoutTotalMicros:
+              nativeStats.visiblePreboundLayoutTotalMicros,
+          visiblePreboundLayoutSampleCount:
+              nativeStats.visiblePreboundLayoutSampleCount,
+          visiblePreboundLayoutMaxMicros:
+              nativeStats.visiblePreboundLayoutMaxMicros,
+          backgroundPrebindBindTotalMicros:
+              nativeStats.backgroundPrebindBindTotalMicros,
+          backgroundPrebindBindSampleCount:
+              nativeStats.backgroundPrebindBindSampleCount,
+          backgroundPrebindBindMaxMicros:
+              nativeStats.backgroundPrebindBindMaxMicros,
+          backgroundPrebindLayoutTotalMicros:
+              nativeStats.backgroundPrebindLayoutTotalMicros,
+          backgroundPrebindLayoutSampleCount:
+              nativeStats.backgroundPrebindLayoutSampleCount,
+          backgroundPrebindLayoutMaxMicros:
+              nativeStats.backgroundPrebindLayoutMaxMicros,
+        ),
+      ];
+    }
+    final feedbacks = <ReaderPageCacheFeedback>[];
+    for (var index = 0; index < restoreFeedbacks.length; index++) {
+      final restoreFeedback = restoreFeedbacks[index];
+      final attachNativeStats = index == restoreFeedbacks.length - 1
+          ? nativeStats
+          : AndroidStaticLayoutStats.empty;
+      feedbacks.add(
+        ReaderPageCacheFeedback(
+          targetPageIndex: restoreFeedback.targetPageIndex,
+          restoredFirstPageIndex: restoreFeedback.restoredFirstPageIndex,
+          restoredLastPageIndex: restoreFeedback.restoredLastPageIndex,
+          usedHotWindow: restoreFeedback.usedHotWindow,
+          recordRestoreEvent: true,
+          bindTotalMicros: attachNativeStats.bindTotalMicros,
+          bindSampleCount: attachNativeStats.bindSampleCount,
+          bindMaxMicros: attachNativeStats.bindMaxMicros,
+          layoutTotalMicros: attachNativeStats.layoutTotalMicros,
+          layoutSampleCount: attachNativeStats.layoutSampleCount,
+          layoutMaxMicros: attachNativeStats.layoutMaxMicros,
+          prebindRequestCount: attachNativeStats.prebindRequestCount,
+          prebindHitCount: attachNativeStats.prebindHitCount,
+          visiblePreboundBindTotalMicros:
+              attachNativeStats.visiblePreboundBindTotalMicros,
+          visiblePreboundBindSampleCount:
+              attachNativeStats.visiblePreboundBindSampleCount,
+          visiblePreboundBindMaxMicros:
+              attachNativeStats.visiblePreboundBindMaxMicros,
+          visiblePreboundLayoutTotalMicros:
+              attachNativeStats.visiblePreboundLayoutTotalMicros,
+          visiblePreboundLayoutSampleCount:
+              attachNativeStats.visiblePreboundLayoutSampleCount,
+          visiblePreboundLayoutMaxMicros:
+              attachNativeStats.visiblePreboundLayoutMaxMicros,
+          backgroundPrebindBindTotalMicros:
+              attachNativeStats.backgroundPrebindBindTotalMicros,
+          backgroundPrebindBindSampleCount:
+              attachNativeStats.backgroundPrebindBindSampleCount,
+          backgroundPrebindBindMaxMicros:
+              attachNativeStats.backgroundPrebindBindMaxMicros,
+          backgroundPrebindLayoutTotalMicros:
+              attachNativeStats.backgroundPrebindLayoutTotalMicros,
+          backgroundPrebindLayoutSampleCount:
+              attachNativeStats.backgroundPrebindLayoutSampleCount,
+          backgroundPrebindLayoutMaxMicros:
+              attachNativeStats.backgroundPrebindLayoutMaxMicros,
+        ),
+      );
+    }
+    return feedbacks;
   }
 }
 
@@ -1299,9 +1860,9 @@ class _ReaderOverlay extends StatelessWidget {
   final VoidCallback onNextChapter;
   final VoidCallback onShowToc;
   final VoidCallback onShowBookmarks;
+  final VoidCallback? onShowDiagnostics;
   final ValueChanged<BuildContext> onShare;
   final VoidCallback onShowReaderSettings;
-  final VoidCallback onOpenAppSettings;
   final VoidCallback onClose;
   final ValueChanged<int> onJumpToPage;
 
@@ -1318,9 +1879,9 @@ class _ReaderOverlay extends StatelessWidget {
     required this.onNextChapter,
     required this.onShowToc,
     required this.onShowBookmarks,
+    this.onShowDiagnostics,
     required this.onShare,
     required this.onShowReaderSettings,
-    required this.onOpenAppSettings,
     required this.onClose,
     required this.onJumpToPage,
   });
@@ -1428,6 +1989,12 @@ class _ReaderOverlay extends StatelessWidget {
                           onPressed: onShowBookmarks,
                           tooltip: l10n.bookmarks,
                         ),
+                        if (onShowDiagnostics != null)
+                          IconButton.filledTonal(
+                            icon: const Icon(Icons.analytics_outlined),
+                            onPressed: onShowDiagnostics,
+                            tooltip: '阅读诊断',
+                          ),
                         Builder(
                           builder: (shareContext) {
                             return IconButton.filledTonal(
@@ -1443,12 +2010,6 @@ class _ReaderOverlay extends StatelessWidget {
                           onPressed: onShowReaderSettings,
                           tooltip: l10n.readerSettings,
                         ),
-                        IconButton.filledTonal(
-                          key: AppKeys.readerOverlaySettings,
-                          icon: const Icon(Icons.settings_outlined),
-                          onPressed: onOpenAppSettings,
-                          tooltip: l10n.settings,
-                        ),
                       ],
                     ),
                   ),
@@ -1459,6 +2020,183 @@ class _ReaderOverlay extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ReaderDiagnosticsSheet extends StatelessWidget {
+  final book_file.TxtLayoutTelemetry? telemetry;
+  final int chapterIndex;
+  final int absolutePageIndex;
+  final int visiblePageCount;
+  final int pageBaseIndex;
+
+  const _ReaderDiagnosticsSheet({
+    required this.telemetry,
+    required this.chapterIndex,
+    required this.absolutePageIndex,
+    required this.visiblePageCount,
+    required this.pageBaseIndex,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final data = telemetry;
+    final content = data == null
+        ? const [
+            _ReaderDiagnosticsRow(label: 'sidecar telemetry', value: '暂无数据'),
+          ]
+        : [
+            _ReaderDiagnosticsRow(
+              label: '热门窗口命中率',
+              value: _ratioLabel(data.hotHitCount, data.hotReadCount),
+            ),
+            _ReaderDiagnosticsRow(
+              label: '平均补页跨度',
+              value: '${data.averageJumpGapPages} 页',
+            ),
+            _ReaderDiagnosticsRow(
+              label: '最大补页跨度',
+              value: '${data.maxJumpGapPages} 页',
+            ),
+            _ReaderDiagnosticsRow(
+              label: '预绑定命中率',
+              value: _ratioLabel(
+                data.prebindHitCount,
+                data.prebindRequestCount,
+              ),
+            ),
+            _ReaderDiagnosticsRow(
+              label: '窗口大小 / 保留数',
+              value:
+                  '${data.adaptiveWindowSize} / ${data.adaptiveRetentionLimit}',
+            ),
+            _ReaderDiagnosticsRow(
+              label: '可见页 bind 均值 / 峰值',
+              value:
+                  '${_microsToMs(data.averageBindMicros)} / ${_microsToMs(data.maxBindMicros)}',
+            ),
+            _ReaderDiagnosticsRow(
+              label: '可见页 layout 均值 / 峰值',
+              value:
+                  '${_microsToMs(data.averageLayoutMicros)} / ${_microsToMs(data.maxLayoutMicros)}',
+            ),
+            _ReaderDiagnosticsRow(
+              label: '命中预绑定可见页 bind 均值 / 峰值',
+              value:
+                  '${_microsToMs(data.averageVisiblePreboundBindMicros)} / ${_microsToMs(data.maxVisiblePreboundBindMicros)}',
+            ),
+            _ReaderDiagnosticsRow(
+              label: '命中预绑定可见页 layout 均值 / 峰值',
+              value:
+                  '${_microsToMs(data.averageVisiblePreboundLayoutMicros)} / ${_microsToMs(data.maxVisiblePreboundLayoutMicros)}',
+            ),
+            _ReaderDiagnosticsRow(
+              label: '后台预绑定 bind 均值 / 峰值',
+              value:
+                  '${_microsToMs(data.averageBackgroundPrebindBindMicros)} / ${_microsToMs(data.maxBackgroundPrebindBindMicros)}',
+            ),
+            _ReaderDiagnosticsRow(
+              label: '后台预绑定 layout 均值 / 峰值',
+              value:
+                  '${_microsToMs(data.averageBackgroundPrebindLayoutMicros)} / ${_microsToMs(data.maxBackgroundPrebindLayoutMicros)}',
+            ),
+          ];
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('阅读诊断', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('当前章节 ${chapterIndex + 1}'),
+                    Text('当前绝对页号 ${absolutePageIndex + 1}'),
+                    Text('窗口起始页号 ${pageBaseIndex + 1}'),
+                    Text('当前窗口页数 $visiblePageCount'),
+                    if (kDebugMode)
+                      Text(
+                        '该面板显示 sidecar 持久化后的统计，不是瞬时内存快照。',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: content.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (context, index) => content[index],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _ratioLabel(BigInt hit, BigInt total) {
+    if (total == BigInt.zero) {
+      return '0 / 0';
+    }
+    final ratio = hit.toDouble() / total.toDouble();
+    return '${hit.toString()} / ${total.toString()} (${(ratio * 100).toStringAsFixed(1)}%)';
+  }
+
+  String _microsToMs(BigInt micros) {
+    final value = micros.toDouble() / 1000;
+    return '${value.toStringAsFixed(value >= 10 ? 1 : 2)} ms';
+  }
+}
+
+class _ReaderDiagnosticsRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ReaderDiagnosticsRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              value,
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(color: colorScheme.primary),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

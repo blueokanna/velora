@@ -6,10 +6,10 @@
 // Static analysis wrongly picks the IO variant, thus ignore this
 // ignore_for_file: argument_type_not_assignable
 
+import 'api/app_start.dart';
 import 'api/book_file.dart';
 import 'api/book_source.dart';
 import 'api/http_source.dart';
-import 'api/simple.dart';
 import 'api/storage.dart';
 import 'api/txt_book.dart';
 import 'dart:async';
@@ -29,6 +29,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException dco_decode_AnyhowException(dynamic raw);
 
   @protected
+  Map<String, List<TxtPageBreakCache>>
+  dco_decode_Map_String_list_txt_page_break_cache_None(dynamic raw);
+
+  @protected
+  Map<String, TxtPageBreakCache>
+  dco_decode_Map_String_txt_page_break_cache_None(dynamic raw);
+
+  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
@@ -44,7 +52,26 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BookshelfEntry dco_decode_bookshelf_entry(dynamic raw);
 
   @protected
+  bool dco_decode_bool(dynamic raw);
+
+  @protected
   BookshelfEntry dco_decode_box_autoadd_bookshelf_entry(dynamic raw);
+
+  @protected
+  TxtLayoutFeedbackInput dco_decode_box_autoadd_txt_layout_feedback_input(
+    dynamic raw,
+  );
+
+  @protected
+  TxtLayoutTelemetry dco_decode_box_autoadd_txt_layout_telemetry(dynamic raw);
+
+  @protected
+  TxtPageCacheSelection dco_decode_box_autoadd_txt_page_cache_selection(
+    dynamic raw,
+  );
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
 
   @protected
   ChapterIndex dco_decode_chapter_index(dynamic raw);
@@ -65,13 +92,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<ChapterIndex> dco_decode_list_chapter_index(dynamic raw);
 
   @protected
+  Uint64List dco_decode_list_prim_u_64_strict(dynamic raw);
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<(String, List<TxtPageBreakCache>)>
+  dco_decode_list_record_string_list_txt_page_break_cache(dynamic raw);
+
+  @protected
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
+
+  @protected
+  List<(String, TxtPageBreakCache)>
+  dco_decode_list_record_string_txt_page_break_cache(dynamic raw);
 
   @protected
   List<SearchHit> dco_decode_list_search_hit(dynamic raw);
@@ -83,10 +121,35 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<TocEntry> dco_decode_list_toc_entry(dynamic raw);
 
   @protected
+  List<TxtPageBreakCache> dco_decode_list_txt_page_break_cache(dynamic raw);
+
+  @protected
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
+  TxtLayoutTelemetry? dco_decode_opt_box_autoadd_txt_layout_telemetry(
+    dynamic raw,
+  );
+
+  @protected
+  TxtPageCacheSelection? dco_decode_opt_box_autoadd_txt_page_cache_selection(
+    dynamic raw,
+  );
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
+
+  @protected
+  (String, List<TxtPageBreakCache>)
+  dco_decode_record_string_list_txt_page_break_cache(dynamic raw);
+
+  @protected
   (String, String) dco_decode_record_string_string(dynamic raw);
+
+  @protected
+  (String, TxtPageBreakCache) dco_decode_record_string_txt_page_break_cache(
+    dynamic raw,
+  );
 
   @protected
   SearchHit dco_decode_search_hit(dynamic raw);
@@ -99,6 +162,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TxtBookMeta dco_decode_txt_book_meta(dynamic raw);
+
+  @protected
+  TxtLayoutCache dco_decode_txt_layout_cache(dynamic raw);
+
+  @protected
+  TxtLayoutFeedbackInput dco_decode_txt_layout_feedback_input(dynamic raw);
+
+  @protected
+  TxtLayoutTelemetry dco_decode_txt_layout_telemetry(dynamic raw);
+
+  @protected
+  TxtPageBreakCache dco_decode_txt_page_break_cache(dynamic raw);
+
+  @protected
+  TxtPageCacheSelection dco_decode_txt_page_cache_selection(dynamic raw);
 
   @protected
   int dco_decode_u_16(dynamic raw);
@@ -119,6 +197,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
+  Map<String, List<TxtPageBreakCache>>
+  sse_decode_Map_String_list_txt_page_break_cache_None(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  Map<String, TxtPageBreakCache>
+  sse_decode_Map_String_txt_page_break_cache_None(SseDeserializer deserializer);
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
@@ -134,9 +222,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BookshelfEntry sse_decode_bookshelf_entry(SseDeserializer deserializer);
 
   @protected
+  bool sse_decode_bool(SseDeserializer deserializer);
+
+  @protected
   BookshelfEntry sse_decode_box_autoadd_bookshelf_entry(
     SseDeserializer deserializer,
   );
+
+  @protected
+  TxtLayoutFeedbackInput sse_decode_box_autoadd_txt_layout_feedback_input(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TxtLayoutTelemetry sse_decode_box_autoadd_txt_layout_telemetry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TxtPageCacheSelection sse_decode_box_autoadd_txt_page_cache_selection(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
   ChapterIndex sse_decode_chapter_index(SseDeserializer deserializer);
@@ -161,13 +270,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  Uint64List sse_decode_list_prim_u_64_strict(SseDeserializer deserializer);
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
+  List<(String, List<TxtPageBreakCache>)>
+  sse_decode_list_record_string_list_txt_page_break_cache(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<(String, String)> sse_decode_list_record_string_string(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<(String, TxtPageBreakCache)>
+  sse_decode_list_record_string_txt_page_break_cache(
     SseDeserializer deserializer,
   );
 
@@ -183,10 +307,39 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<TocEntry> sse_decode_list_toc_entry(SseDeserializer deserializer);
 
   @protected
+  List<TxtPageBreakCache> sse_decode_list_txt_page_break_cache(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
+  TxtLayoutTelemetry? sse_decode_opt_box_autoadd_txt_layout_telemetry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TxtPageCacheSelection? sse_decode_opt_box_autoadd_txt_page_cache_selection(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
+  (String, List<TxtPageBreakCache>)
+  sse_decode_record_string_list_txt_page_break_cache(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   (String, String) sse_decode_record_string_string(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  (String, TxtPageBreakCache) sse_decode_record_string_txt_page_break_cache(
     SseDeserializer deserializer,
   );
 
@@ -201,6 +354,29 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TxtBookMeta sse_decode_txt_book_meta(SseDeserializer deserializer);
+
+  @protected
+  TxtLayoutCache sse_decode_txt_layout_cache(SseDeserializer deserializer);
+
+  @protected
+  TxtLayoutFeedbackInput sse_decode_txt_layout_feedback_input(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TxtLayoutTelemetry sse_decode_txt_layout_telemetry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TxtPageBreakCache sse_decode_txt_page_break_cache(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TxtPageCacheSelection sse_decode_txt_page_cache_selection(
+    SseDeserializer deserializer,
+  );
 
   @protected
   int sse_decode_u_16(SseDeserializer deserializer);
@@ -221,11 +397,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer);
-
-  @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_Map_String_list_txt_page_break_cache_None(
+    Map<String, List<TxtPageBreakCache>> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_Map_String_txt_page_break_cache_None(
+    Map<String, TxtPageBreakCache> self,
     SseSerializer serializer,
   );
 
@@ -248,10 +433,34 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_bool(bool self, SseSerializer serializer);
+
+  @protected
   void sse_encode_box_autoadd_bookshelf_entry(
     BookshelfEntry self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_box_autoadd_txt_layout_feedback_input(
+    TxtLayoutFeedbackInput self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_txt_layout_telemetry(
+    TxtLayoutTelemetry self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_txt_page_cache_selection(
+    TxtPageCacheSelection self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_chapter_index(ChapterIndex self, SseSerializer serializer);
@@ -281,6 +490,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_prim_u_64_strict(
+    Uint64List self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
@@ -290,8 +505,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_record_string_list_txt_page_break_cache(
+    List<(String, List<TxtPageBreakCache>)> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_record_string_string(
     List<(String, String)> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_record_string_txt_page_break_cache(
+    List<(String, TxtPageBreakCache)> self,
     SseSerializer serializer,
   );
 
@@ -311,11 +538,44 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_toc_entry(List<TocEntry> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_txt_page_break_cache(
+    List<TxtPageBreakCache> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_txt_layout_telemetry(
+    TxtLayoutTelemetry? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_txt_page_cache_selection(
+    TxtPageCacheSelection? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_record_string_list_txt_page_break_cache(
+    (String, List<TxtPageBreakCache>) self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_record_string_string(
     (String, String) self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_record_string_txt_page_break_cache(
+    (String, TxtPageBreakCache) self,
     SseSerializer serializer,
   );
 
@@ -330,6 +590,36 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_txt_book_meta(TxtBookMeta self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_txt_layout_cache(
+    TxtLayoutCache self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_txt_layout_feedback_input(
+    TxtLayoutFeedbackInput self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_txt_layout_telemetry(
+    TxtLayoutTelemetry self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_txt_page_break_cache(
+    TxtPageBreakCache self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_txt_page_cache_selection(
+    TxtPageCacheSelection self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_u_16(int self, SseSerializer serializer);
@@ -348,9 +638,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer);
 }
 
 // Section: wire_class

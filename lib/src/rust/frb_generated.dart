@@ -3,10 +3,10 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'api/app_start.dart';
 import 'api/book_file.dart';
 import 'api/book_source.dart';
 import 'api/http_source.dart';
-import 'api/simple.dart';
 import 'api/storage.dart';
 import 'api/txt_book.dart';
 import 'dart:async';
@@ -60,7 +60,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 
   @override
   Future<void> executeRustInitializers() async {
-    await api.crateApiSimpleInitApp();
+    await api.crateApiAppStartInitApp();
   }
 
   @override
@@ -71,7 +71,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -977944047;
+  int get rustContentHash => -1207405332;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -83,7 +83,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  String crateApiSimpleEngineVersion();
+  String crateApiAppStartEngineVersion();
 
   int crateApiTxtBookEstimateWordCount({required String text});
 
@@ -97,7 +97,7 @@ abstract class RustLibApi extends BaseApi {
     required List<(String, String)> headers,
   });
 
-  Future<void> crateApiSimpleInitApp();
+  Future<void> crateApiAppStartInitApp();
 
   void crateApiStorageInitStorage({required String rootDir});
 
@@ -145,7 +145,27 @@ abstract class RustLibApi extends BaseApi {
     required BigInt end,
   });
 
+  TxtLayoutTelemetry? crateApiBookFileReadTxtLayoutTelemetry({
+    required String path,
+    required String layoutKey,
+  });
+
+  TxtPageCacheSelection? crateApiBookFileReadTxtPageCache({
+    required String path,
+    required String layoutKey,
+    required int chapterIndex,
+    required int targetPageIndex,
+    required BigInt textLength,
+  });
+
   void crateApiStorageRemoveBook({required String id});
+
+  void crateApiBookFileReportTxtLayoutFeedback({
+    required String path,
+    required String layoutKey,
+    required int chapterIndex,
+    required TxtLayoutFeedbackInput feedback,
+  });
 
   List<SearchHit> crateApiTxtBookSearchInBook({
     required String path,
@@ -173,6 +193,10 @@ abstract class RustLibApi extends BaseApi {
     required String tocUrl,
   });
 
+  Future<TxtLayoutCache> crateApiBookFileTxtLayoutCacheDefault();
+
+  Future<TxtLayoutTelemetry> crateApiBookFileTxtLayoutTelemetryDefault();
+
   void crateApiStorageUpdateProgress({
     required String id,
     required int chapter,
@@ -181,6 +205,18 @@ abstract class RustLibApi extends BaseApi {
   });
 
   void crateApiStorageUpsertBook({required BookshelfEntry entry});
+
+  void crateApiBookFileWriteTxtPageCache({
+    required String path,
+    required String layoutKey,
+    required int chapterIndex,
+    required int basePageIndex,
+    required BigInt startOffset,
+    required Uint64List pageEnds,
+    required BigInt nextOffset,
+    required bool hasMore,
+    required int lastPageIndex,
+  });
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -192,7 +228,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  String crateApiSimpleEngineVersion() {
+  String crateApiAppStartEngineVersion() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
@@ -203,14 +239,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_String,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiSimpleEngineVersionConstMeta,
+        constMeta: kCrateApiAppStartEngineVersionConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleEngineVersionConstMeta =>
+  TaskConstMeta get kCrateApiAppStartEngineVersionConstMeta =>
       const TaskConstMeta(debugName: "engine_version", argNames: []);
 
   @override
@@ -301,7 +337,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "http_get", argNames: ["url", "headers"]);
 
   @override
-  Future<void> crateApiSimpleInitApp() {
+  Future<void> crateApiAppStartInitApp() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -317,14 +353,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiSimpleInitAppConstMeta,
+        constMeta: kCrateApiAppStartInitAppConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleInitAppConstMeta =>
+  TaskConstMeta get kCrateApiAppStartInitAppConstMeta =>
       const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
@@ -614,13 +650,86 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  TxtLayoutTelemetry? crateApiBookFileReadTxtLayoutTelemetry({
+    required String path,
+    required String layoutKey,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(layoutKey, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_txt_layout_telemetry,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiBookFileReadTxtLayoutTelemetryConstMeta,
+        argValues: [path, layoutKey],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBookFileReadTxtLayoutTelemetryConstMeta =>
+      const TaskConstMeta(
+        debugName: "read_txt_layout_telemetry",
+        argNames: ["path", "layoutKey"],
+      );
+
+  @override
+  TxtPageCacheSelection? crateApiBookFileReadTxtPageCache({
+    required String path,
+    required String layoutKey,
+    required int chapterIndex,
+    required int targetPageIndex,
+    required BigInt textLength,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(layoutKey, serializer);
+          sse_encode_u_32(chapterIndex, serializer);
+          sse_encode_u_32(targetPageIndex, serializer);
+          sse_encode_u_64(textLength, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_opt_box_autoadd_txt_page_cache_selection,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiBookFileReadTxtPageCacheConstMeta,
+        argValues: [path, layoutKey, chapterIndex, targetPageIndex, textLength],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBookFileReadTxtPageCacheConstMeta =>
+      const TaskConstMeta(
+        debugName: "read_txt_page_cache",
+        argNames: [
+          "path",
+          "layoutKey",
+          "chapterIndex",
+          "targetPageIndex",
+          "textLength",
+        ],
+      );
+
+  @override
   void crateApiStorageRemoveBook({required String id}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(id, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -637,6 +746,43 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "remove_book", argNames: ["id"]);
 
   @override
+  void crateApiBookFileReportTxtLayoutFeedback({
+    required String path,
+    required String layoutKey,
+    required int chapterIndex,
+    required TxtLayoutFeedbackInput feedback,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(layoutKey, serializer);
+          sse_encode_u_32(chapterIndex, serializer);
+          sse_encode_box_autoadd_txt_layout_feedback_input(
+            feedback,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 19)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiBookFileReportTxtLayoutFeedbackConstMeta,
+        argValues: [path, layoutKey, chapterIndex, feedback],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBookFileReportTxtLayoutFeedbackConstMeta =>
+      const TaskConstMeta(
+        debugName: "report_txt_layout_feedback",
+        argNames: ["path", "layoutKey", "chapterIndex", "feedback"],
+      );
+
+  @override
   List<SearchHit> crateApiTxtBookSearchInBook({
     required String path,
     required String keyword,
@@ -649,7 +795,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(path, serializer);
           sse_encode_String(keyword, serializer);
           sse_encode_u_32(maxHits, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_search_hit,
@@ -682,7 +828,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 21,
             port: port_,
           );
         },
@@ -717,7 +863,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 22,
             port: port_,
           );
         },
@@ -752,7 +898,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 23,
             port: port_,
           );
         },
@@ -787,7 +933,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 24,
             port: port_,
           );
         },
@@ -809,6 +955,63 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<TxtLayoutCache> crateApiBookFileTxtLayoutCacheDefault() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 25,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_txt_layout_cache,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiBookFileTxtLayoutCacheDefaultConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBookFileTxtLayoutCacheDefaultConstMeta =>
+      const TaskConstMeta(debugName: "txt_layout_cache_default", argNames: []);
+
+  @override
+  Future<TxtLayoutTelemetry> crateApiBookFileTxtLayoutTelemetryDefault() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 26,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_txt_layout_telemetry,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiBookFileTxtLayoutTelemetryDefaultConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBookFileTxtLayoutTelemetryDefaultConstMeta =>
+      const TaskConstMeta(
+        debugName: "txt_layout_telemetry_default",
+        argNames: [],
+      );
+
+  @override
   void crateApiStorageUpdateProgress({
     required String id,
     required int chapter,
@@ -823,7 +1026,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_u_32(chapter, serializer);
           sse_encode_u_64(offset, serializer);
           sse_encode_i_64(ts, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 22)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 27)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -849,7 +1052,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_box_autoadd_bookshelf_entry(entry, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 23)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 28)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -865,10 +1068,96 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiStorageUpsertBookConstMeta =>
       const TaskConstMeta(debugName: "upsert_book", argNames: ["entry"]);
 
+  @override
+  void crateApiBookFileWriteTxtPageCache({
+    required String path,
+    required String layoutKey,
+    required int chapterIndex,
+    required int basePageIndex,
+    required BigInt startOffset,
+    required Uint64List pageEnds,
+    required BigInt nextOffset,
+    required bool hasMore,
+    required int lastPageIndex,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_String(layoutKey, serializer);
+          sse_encode_u_32(chapterIndex, serializer);
+          sse_encode_u_32(basePageIndex, serializer);
+          sse_encode_u_64(startOffset, serializer);
+          sse_encode_list_prim_u_64_strict(pageEnds, serializer);
+          sse_encode_u_64(nextOffset, serializer);
+          sse_encode_bool(hasMore, serializer);
+          sse_encode_u_32(lastPageIndex, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 29)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiBookFileWriteTxtPageCacheConstMeta,
+        argValues: [
+          path,
+          layoutKey,
+          chapterIndex,
+          basePageIndex,
+          startOffset,
+          pageEnds,
+          nextOffset,
+          hasMore,
+          lastPageIndex,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBookFileWriteTxtPageCacheConstMeta =>
+      const TaskConstMeta(
+        debugName: "write_txt_page_cache",
+        argNames: [
+          "path",
+          "layoutKey",
+          "chapterIndex",
+          "basePageIndex",
+          "startOffset",
+          "pageEnds",
+          "nextOffset",
+          "hasMore",
+          "lastPageIndex",
+        ],
+      );
+
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return AnyhowException(raw as String);
+  }
+
+  @protected
+  Map<String, List<TxtPageBreakCache>>
+  dco_decode_Map_String_list_txt_page_break_cache_None(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return Map.fromEntries(
+      dco_decode_list_record_string_list_txt_page_break_cache(
+        raw,
+      ).map((e) => MapEntry(e.$1, e.$2)),
+    );
+  }
+
+  @protected
+  Map<String, TxtPageBreakCache>
+  dco_decode_Map_String_txt_page_break_cache_None(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return Map.fromEntries(
+      dco_decode_list_record_string_txt_page_break_cache(
+        raw,
+      ).map((e) => MapEntry(e.$1, e.$2)),
+    );
   }
 
   @protected
@@ -947,9 +1236,43 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  bool dco_decode_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
   BookshelfEntry dco_decode_box_autoadd_bookshelf_entry(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_bookshelf_entry(raw);
+  }
+
+  @protected
+  TxtLayoutFeedbackInput dco_decode_box_autoadd_txt_layout_feedback_input(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_txt_layout_feedback_input(raw);
+  }
+
+  @protected
+  TxtLayoutTelemetry dco_decode_box_autoadd_txt_layout_telemetry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_txt_layout_telemetry(raw);
+  }
+
+  @protected
+  TxtPageCacheSelection dco_decode_box_autoadd_txt_page_cache_selection(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_txt_page_cache_selection(raw);
+  }
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_u_64(raw);
   }
 
   @protected
@@ -1004,6 +1327,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Uint64List dco_decode_list_prim_u_64_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeUint64List(raw);
+  }
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as List<int>;
@@ -1016,9 +1345,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<(String, List<TxtPageBreakCache>)>
+  dco_decode_list_record_string_list_txt_page_break_cache(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>)
+        .map(dco_decode_record_string_list_txt_page_break_cache)
+        .toList();
+  }
+
+  @protected
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_record_string_string).toList();
+  }
+
+  @protected
+  List<(String, TxtPageBreakCache)>
+  dco_decode_list_record_string_txt_page_break_cache(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>)
+        .map(dco_decode_record_string_txt_page_break_cache)
+        .toList();
   }
 
   @protected
@@ -1040,9 +1387,55 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<TxtPageBreakCache> dco_decode_list_txt_page_break_cache(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_txt_page_break_cache).toList();
+  }
+
+  @protected
   String? dco_decode_opt_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  TxtLayoutTelemetry? dco_decode_opt_box_autoadd_txt_layout_telemetry(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null
+        ? null
+        : dco_decode_box_autoadd_txt_layout_telemetry(raw);
+  }
+
+  @protected
+  TxtPageCacheSelection? dco_decode_opt_box_autoadd_txt_page_cache_selection(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null
+        ? null
+        : dco_decode_box_autoadd_txt_page_cache_selection(raw);
+  }
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_u_64(raw);
+  }
+
+  @protected
+  (String, List<TxtPageBreakCache>)
+  dco_decode_record_string_list_txt_page_break_cache(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2) {
+      throw Exception('Expected 2 elements, got ${arr.length}');
+    }
+    return (
+      dco_decode_String(arr[0]),
+      dco_decode_list_txt_page_break_cache(arr[1]),
+    );
   }
 
   @protected
@@ -1053,6 +1446,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       throw Exception('Expected 2 elements, got ${arr.length}');
     }
     return (dco_decode_String(arr[0]), dco_decode_String(arr[1]));
+  }
+
+  @protected
+  (String, TxtPageBreakCache) dco_decode_record_string_txt_page_break_cache(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2) {
+      throw Exception('Expected 2 elements, got ${arr.length}');
+    }
+    return (dco_decode_String(arr[0]), dco_decode_txt_page_break_cache(arr[1]));
   }
 
   @protected
@@ -1110,6 +1515,126 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TxtLayoutCache dco_decode_txt_layout_cache(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return TxtLayoutCache(
+      chapters: dco_decode_Map_String_txt_page_break_cache_None(arr[0]),
+      hotWindows: dco_decode_Map_String_list_txt_page_break_cache_None(arr[1]),
+      telemetry: dco_decode_txt_layout_telemetry(arr[2]),
+      updatedAtMillis: dco_decode_opt_box_autoadd_u_64(arr[3]),
+    );
+  }
+
+  @protected
+  TxtLayoutFeedbackInput dco_decode_txt_layout_feedback_input(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 25)
+      throw Exception('unexpected arr length: expect 25 but see ${arr.length}');
+    return TxtLayoutFeedbackInput(
+      targetPageIndex: dco_decode_u_32(arr[0]),
+      restoredFirstPageIndex: dco_decode_u_32(arr[1]),
+      restoredLastPageIndex: dco_decode_u_32(arr[2]),
+      usedHotWindow: dco_decode_bool(arr[3]),
+      recordRestoreEvent: dco_decode_bool(arr[4]),
+      bindTotalMicros: dco_decode_u_64(arr[5]),
+      bindSampleCount: dco_decode_u_32(arr[6]),
+      bindMaxMicros: dco_decode_u_64(arr[7]),
+      layoutTotalMicros: dco_decode_u_64(arr[8]),
+      layoutSampleCount: dco_decode_u_32(arr[9]),
+      layoutMaxMicros: dco_decode_u_64(arr[10]),
+      prebindRequestCount: dco_decode_u_32(arr[11]),
+      prebindHitCount: dco_decode_u_32(arr[12]),
+      visiblePreboundBindTotalMicros: dco_decode_u_64(arr[13]),
+      visiblePreboundBindSampleCount: dco_decode_u_32(arr[14]),
+      visiblePreboundBindMaxMicros: dco_decode_u_64(arr[15]),
+      visiblePreboundLayoutTotalMicros: dco_decode_u_64(arr[16]),
+      visiblePreboundLayoutSampleCount: dco_decode_u_32(arr[17]),
+      visiblePreboundLayoutMaxMicros: dco_decode_u_64(arr[18]),
+      backgroundPrebindBindTotalMicros: dco_decode_u_64(arr[19]),
+      backgroundPrebindBindSampleCount: dco_decode_u_32(arr[20]),
+      backgroundPrebindBindMaxMicros: dco_decode_u_64(arr[21]),
+      backgroundPrebindLayoutTotalMicros: dco_decode_u_64(arr[22]),
+      backgroundPrebindLayoutSampleCount: dco_decode_u_32(arr[23]),
+      backgroundPrebindLayoutMaxMicros: dco_decode_u_64(arr[24]),
+    );
+  }
+
+  @protected
+  TxtLayoutTelemetry dco_decode_txt_layout_telemetry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 28)
+      throw Exception('unexpected arr length: expect 28 but see ${arr.length}');
+    return TxtLayoutTelemetry(
+      hotReadCount: dco_decode_u_64(arr[0]),
+      hotHitCount: dco_decode_u_64(arr[1]),
+      hotMissCount: dco_decode_u_64(arr[2]),
+      averageJumpGapPages: dco_decode_u_32(arr[3]),
+      maxJumpGapPages: dco_decode_u_32(arr[4]),
+      bindSampleCount: dco_decode_u_64(arr[5]),
+      averageBindMicros: dco_decode_u_64(arr[6]),
+      maxBindMicros: dco_decode_u_64(arr[7]),
+      layoutSampleCount: dco_decode_u_64(arr[8]),
+      averageLayoutMicros: dco_decode_u_64(arr[9]),
+      maxLayoutMicros: dco_decode_u_64(arr[10]),
+      prebindRequestCount: dco_decode_u_64(arr[11]),
+      prebindHitCount: dco_decode_u_64(arr[12]),
+      visiblePreboundBindSampleCount: dco_decode_u_64(arr[13]),
+      averageVisiblePreboundBindMicros: dco_decode_u_64(arr[14]),
+      maxVisiblePreboundBindMicros: dco_decode_u_64(arr[15]),
+      visiblePreboundLayoutSampleCount: dco_decode_u_64(arr[16]),
+      averageVisiblePreboundLayoutMicros: dco_decode_u_64(arr[17]),
+      maxVisiblePreboundLayoutMicros: dco_decode_u_64(arr[18]),
+      backgroundPrebindBindSampleCount: dco_decode_u_64(arr[19]),
+      averageBackgroundPrebindBindMicros: dco_decode_u_64(arr[20]),
+      maxBackgroundPrebindBindMicros: dco_decode_u_64(arr[21]),
+      backgroundPrebindLayoutSampleCount: dco_decode_u_64(arr[22]),
+      averageBackgroundPrebindLayoutMicros: dco_decode_u_64(arr[23]),
+      maxBackgroundPrebindLayoutMicros: dco_decode_u_64(arr[24]),
+      adaptiveWindowSize: dco_decode_u_32(arr[25]),
+      adaptiveRetentionLimit: dco_decode_u_32(arr[26]),
+      updatedAtMillis: dco_decode_opt_box_autoadd_u_64(arr[27]),
+    );
+  }
+
+  @protected
+  TxtPageBreakCache dco_decode_txt_page_break_cache(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return TxtPageBreakCache(
+      basePageIndex: dco_decode_u_32(arr[0]),
+      startOffset: dco_decode_u_64(arr[1]),
+      pageEnds: dco_decode_list_prim_u_64_strict(arr[2]),
+      nextOffset: dco_decode_u_64(arr[3]),
+      hasMore: dco_decode_bool(arr[4]),
+      lastPageIndex: dco_decode_u_32(arr[5]),
+      touchedAtMillis: dco_decode_opt_box_autoadd_u_64(arr[6]),
+    );
+  }
+
+  @protected
+  TxtPageCacheSelection dco_decode_txt_page_cache_selection(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return TxtPageCacheSelection(
+      cache: dco_decode_txt_page_break_cache(arr[0]),
+      usedHotWindow: dco_decode_bool(arr[1]),
+      restoredFirstPageIndex: dco_decode_u_32(arr[2]),
+      restoredLastPageIndex: dco_decode_u_32(arr[3]),
+      adaptiveWindowSize: dco_decode_u_32(arr[4]),
+      adaptiveRetentionLimit: dco_decode_u_32(arr[5]),
+    );
+  }
+
+  @protected
   int dco_decode_u_16(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -1144,6 +1669,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_String(deserializer);
     return AnyhowException(inner);
+  }
+
+  @protected
+  Map<String, List<TxtPageBreakCache>>
+  sse_decode_Map_String_list_txt_page_break_cache_None(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_list_record_string_list_txt_page_break_cache(
+      deserializer,
+    );
+    return Map.fromEntries(inner.map((e) => MapEntry(e.$1, e.$2)));
+  }
+
+  @protected
+  Map<String, TxtPageBreakCache>
+  sse_decode_Map_String_txt_page_break_cache_None(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_list_record_string_txt_page_break_cache(
+      deserializer,
+    );
+    return Map.fromEntries(inner.map((e) => MapEntry(e.$1, e.$2)));
   }
 
   @protected
@@ -1236,11 +1785,47 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  bool sse_decode_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
   BookshelfEntry sse_decode_box_autoadd_bookshelf_entry(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_bookshelf_entry(deserializer));
+  }
+
+  @protected
+  TxtLayoutFeedbackInput sse_decode_box_autoadd_txt_layout_feedback_input(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_txt_layout_feedback_input(deserializer));
+  }
+
+  @protected
+  TxtLayoutTelemetry sse_decode_box_autoadd_txt_layout_telemetry(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_txt_layout_telemetry(deserializer));
+  }
+
+  @protected
+  TxtPageCacheSelection sse_decode_box_autoadd_txt_page_cache_selection(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_txt_page_cache_selection(deserializer));
+  }
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_u_64(deserializer));
   }
 
   @protected
@@ -1314,6 +1899,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Uint64List sse_decode_list_prim_u_64_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint64List(len_);
+  }
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -1328,6 +1920,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<(String, List<TxtPageBreakCache>)>
+  sse_decode_list_record_string_list_txt_page_break_cache(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <(String, List<TxtPageBreakCache>)>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(
+        sse_decode_record_string_list_txt_page_break_cache(deserializer),
+      );
+    }
+    return ans_;
+  }
+
+  @protected
   List<(String, String)> sse_decode_list_record_string_string(
     SseDeserializer deserializer,
   ) {
@@ -1337,6 +1946,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <(String, String)>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_record_string_string(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<(String, TxtPageBreakCache)>
+  sse_decode_list_record_string_txt_page_break_cache(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <(String, TxtPageBreakCache)>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_record_string_txt_page_break_cache(deserializer));
     }
     return ans_;
   }
@@ -1380,6 +2004,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<TxtPageBreakCache> sse_decode_list_txt_page_break_cache(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <TxtPageBreakCache>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_txt_page_break_cache(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -1391,12 +2029,70 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TxtLayoutTelemetry? sse_decode_opt_box_autoadd_txt_layout_telemetry(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_txt_layout_telemetry(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  TxtPageCacheSelection? sse_decode_opt_box_autoadd_txt_page_cache_selection(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_txt_page_cache_selection(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_u_64(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  (String, List<TxtPageBreakCache>)
+  sse_decode_record_string_list_txt_page_break_cache(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_field0 = sse_decode_String(deserializer);
+    var var_field1 = sse_decode_list_txt_page_break_cache(deserializer);
+    return (var_field0, var_field1);
+  }
+
+  @protected
   (String, String) sse_decode_record_string_string(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_field0 = sse_decode_String(deserializer);
     var var_field1 = sse_decode_String(deserializer);
+    return (var_field0, var_field1);
+  }
+
+  @protected
+  (String, TxtPageBreakCache) sse_decode_record_string_txt_page_break_cache(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_field0 = sse_decode_String(deserializer);
+    var var_field1 = sse_decode_txt_page_break_cache(deserializer);
     return (var_field0, var_field1);
   }
 
@@ -1451,6 +2147,201 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TxtLayoutCache sse_decode_txt_layout_cache(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_chapters = sse_decode_Map_String_txt_page_break_cache_None(
+      deserializer,
+    );
+    var var_hotWindows = sse_decode_Map_String_list_txt_page_break_cache_None(
+      deserializer,
+    );
+    var var_telemetry = sse_decode_txt_layout_telemetry(deserializer);
+    var var_updatedAtMillis = sse_decode_opt_box_autoadd_u_64(deserializer);
+    return TxtLayoutCache(
+      chapters: var_chapters,
+      hotWindows: var_hotWindows,
+      telemetry: var_telemetry,
+      updatedAtMillis: var_updatedAtMillis,
+    );
+  }
+
+  @protected
+  TxtLayoutFeedbackInput sse_decode_txt_layout_feedback_input(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_targetPageIndex = sse_decode_u_32(deserializer);
+    var var_restoredFirstPageIndex = sse_decode_u_32(deserializer);
+    var var_restoredLastPageIndex = sse_decode_u_32(deserializer);
+    var var_usedHotWindow = sse_decode_bool(deserializer);
+    var var_recordRestoreEvent = sse_decode_bool(deserializer);
+    var var_bindTotalMicros = sse_decode_u_64(deserializer);
+    var var_bindSampleCount = sse_decode_u_32(deserializer);
+    var var_bindMaxMicros = sse_decode_u_64(deserializer);
+    var var_layoutTotalMicros = sse_decode_u_64(deserializer);
+    var var_layoutSampleCount = sse_decode_u_32(deserializer);
+    var var_layoutMaxMicros = sse_decode_u_64(deserializer);
+    var var_prebindRequestCount = sse_decode_u_32(deserializer);
+    var var_prebindHitCount = sse_decode_u_32(deserializer);
+    var var_visiblePreboundBindTotalMicros = sse_decode_u_64(deserializer);
+    var var_visiblePreboundBindSampleCount = sse_decode_u_32(deserializer);
+    var var_visiblePreboundBindMaxMicros = sse_decode_u_64(deserializer);
+    var var_visiblePreboundLayoutTotalMicros = sse_decode_u_64(deserializer);
+    var var_visiblePreboundLayoutSampleCount = sse_decode_u_32(deserializer);
+    var var_visiblePreboundLayoutMaxMicros = sse_decode_u_64(deserializer);
+    var var_backgroundPrebindBindTotalMicros = sse_decode_u_64(deserializer);
+    var var_backgroundPrebindBindSampleCount = sse_decode_u_32(deserializer);
+    var var_backgroundPrebindBindMaxMicros = sse_decode_u_64(deserializer);
+    var var_backgroundPrebindLayoutTotalMicros = sse_decode_u_64(deserializer);
+    var var_backgroundPrebindLayoutSampleCount = sse_decode_u_32(deserializer);
+    var var_backgroundPrebindLayoutMaxMicros = sse_decode_u_64(deserializer);
+    return TxtLayoutFeedbackInput(
+      targetPageIndex: var_targetPageIndex,
+      restoredFirstPageIndex: var_restoredFirstPageIndex,
+      restoredLastPageIndex: var_restoredLastPageIndex,
+      usedHotWindow: var_usedHotWindow,
+      recordRestoreEvent: var_recordRestoreEvent,
+      bindTotalMicros: var_bindTotalMicros,
+      bindSampleCount: var_bindSampleCount,
+      bindMaxMicros: var_bindMaxMicros,
+      layoutTotalMicros: var_layoutTotalMicros,
+      layoutSampleCount: var_layoutSampleCount,
+      layoutMaxMicros: var_layoutMaxMicros,
+      prebindRequestCount: var_prebindRequestCount,
+      prebindHitCount: var_prebindHitCount,
+      visiblePreboundBindTotalMicros: var_visiblePreboundBindTotalMicros,
+      visiblePreboundBindSampleCount: var_visiblePreboundBindSampleCount,
+      visiblePreboundBindMaxMicros: var_visiblePreboundBindMaxMicros,
+      visiblePreboundLayoutTotalMicros: var_visiblePreboundLayoutTotalMicros,
+      visiblePreboundLayoutSampleCount: var_visiblePreboundLayoutSampleCount,
+      visiblePreboundLayoutMaxMicros: var_visiblePreboundLayoutMaxMicros,
+      backgroundPrebindBindTotalMicros: var_backgroundPrebindBindTotalMicros,
+      backgroundPrebindBindSampleCount: var_backgroundPrebindBindSampleCount,
+      backgroundPrebindBindMaxMicros: var_backgroundPrebindBindMaxMicros,
+      backgroundPrebindLayoutTotalMicros:
+          var_backgroundPrebindLayoutTotalMicros,
+      backgroundPrebindLayoutSampleCount:
+          var_backgroundPrebindLayoutSampleCount,
+      backgroundPrebindLayoutMaxMicros: var_backgroundPrebindLayoutMaxMicros,
+    );
+  }
+
+  @protected
+  TxtLayoutTelemetry sse_decode_txt_layout_telemetry(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_hotReadCount = sse_decode_u_64(deserializer);
+    var var_hotHitCount = sse_decode_u_64(deserializer);
+    var var_hotMissCount = sse_decode_u_64(deserializer);
+    var var_averageJumpGapPages = sse_decode_u_32(deserializer);
+    var var_maxJumpGapPages = sse_decode_u_32(deserializer);
+    var var_bindSampleCount = sse_decode_u_64(deserializer);
+    var var_averageBindMicros = sse_decode_u_64(deserializer);
+    var var_maxBindMicros = sse_decode_u_64(deserializer);
+    var var_layoutSampleCount = sse_decode_u_64(deserializer);
+    var var_averageLayoutMicros = sse_decode_u_64(deserializer);
+    var var_maxLayoutMicros = sse_decode_u_64(deserializer);
+    var var_prebindRequestCount = sse_decode_u_64(deserializer);
+    var var_prebindHitCount = sse_decode_u_64(deserializer);
+    var var_visiblePreboundBindSampleCount = sse_decode_u_64(deserializer);
+    var var_averageVisiblePreboundBindMicros = sse_decode_u_64(deserializer);
+    var var_maxVisiblePreboundBindMicros = sse_decode_u_64(deserializer);
+    var var_visiblePreboundLayoutSampleCount = sse_decode_u_64(deserializer);
+    var var_averageVisiblePreboundLayoutMicros = sse_decode_u_64(deserializer);
+    var var_maxVisiblePreboundLayoutMicros = sse_decode_u_64(deserializer);
+    var var_backgroundPrebindBindSampleCount = sse_decode_u_64(deserializer);
+    var var_averageBackgroundPrebindBindMicros = sse_decode_u_64(deserializer);
+    var var_maxBackgroundPrebindBindMicros = sse_decode_u_64(deserializer);
+    var var_backgroundPrebindLayoutSampleCount = sse_decode_u_64(deserializer);
+    var var_averageBackgroundPrebindLayoutMicros = sse_decode_u_64(
+      deserializer,
+    );
+    var var_maxBackgroundPrebindLayoutMicros = sse_decode_u_64(deserializer);
+    var var_adaptiveWindowSize = sse_decode_u_32(deserializer);
+    var var_adaptiveRetentionLimit = sse_decode_u_32(deserializer);
+    var var_updatedAtMillis = sse_decode_opt_box_autoadd_u_64(deserializer);
+    return TxtLayoutTelemetry(
+      hotReadCount: var_hotReadCount,
+      hotHitCount: var_hotHitCount,
+      hotMissCount: var_hotMissCount,
+      averageJumpGapPages: var_averageJumpGapPages,
+      maxJumpGapPages: var_maxJumpGapPages,
+      bindSampleCount: var_bindSampleCount,
+      averageBindMicros: var_averageBindMicros,
+      maxBindMicros: var_maxBindMicros,
+      layoutSampleCount: var_layoutSampleCount,
+      averageLayoutMicros: var_averageLayoutMicros,
+      maxLayoutMicros: var_maxLayoutMicros,
+      prebindRequestCount: var_prebindRequestCount,
+      prebindHitCount: var_prebindHitCount,
+      visiblePreboundBindSampleCount: var_visiblePreboundBindSampleCount,
+      averageVisiblePreboundBindMicros: var_averageVisiblePreboundBindMicros,
+      maxVisiblePreboundBindMicros: var_maxVisiblePreboundBindMicros,
+      visiblePreboundLayoutSampleCount: var_visiblePreboundLayoutSampleCount,
+      averageVisiblePreboundLayoutMicros:
+          var_averageVisiblePreboundLayoutMicros,
+      maxVisiblePreboundLayoutMicros: var_maxVisiblePreboundLayoutMicros,
+      backgroundPrebindBindSampleCount: var_backgroundPrebindBindSampleCount,
+      averageBackgroundPrebindBindMicros:
+          var_averageBackgroundPrebindBindMicros,
+      maxBackgroundPrebindBindMicros: var_maxBackgroundPrebindBindMicros,
+      backgroundPrebindLayoutSampleCount:
+          var_backgroundPrebindLayoutSampleCount,
+      averageBackgroundPrebindLayoutMicros:
+          var_averageBackgroundPrebindLayoutMicros,
+      maxBackgroundPrebindLayoutMicros: var_maxBackgroundPrebindLayoutMicros,
+      adaptiveWindowSize: var_adaptiveWindowSize,
+      adaptiveRetentionLimit: var_adaptiveRetentionLimit,
+      updatedAtMillis: var_updatedAtMillis,
+    );
+  }
+
+  @protected
+  TxtPageBreakCache sse_decode_txt_page_break_cache(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_basePageIndex = sse_decode_u_32(deserializer);
+    var var_startOffset = sse_decode_u_64(deserializer);
+    var var_pageEnds = sse_decode_list_prim_u_64_strict(deserializer);
+    var var_nextOffset = sse_decode_u_64(deserializer);
+    var var_hasMore = sse_decode_bool(deserializer);
+    var var_lastPageIndex = sse_decode_u_32(deserializer);
+    var var_touchedAtMillis = sse_decode_opt_box_autoadd_u_64(deserializer);
+    return TxtPageBreakCache(
+      basePageIndex: var_basePageIndex,
+      startOffset: var_startOffset,
+      pageEnds: var_pageEnds,
+      nextOffset: var_nextOffset,
+      hasMore: var_hasMore,
+      lastPageIndex: var_lastPageIndex,
+      touchedAtMillis: var_touchedAtMillis,
+    );
+  }
+
+  @protected
+  TxtPageCacheSelection sse_decode_txt_page_cache_selection(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_cache = sse_decode_txt_page_break_cache(deserializer);
+    var var_usedHotWindow = sse_decode_bool(deserializer);
+    var var_restoredFirstPageIndex = sse_decode_u_32(deserializer);
+    var var_restoredLastPageIndex = sse_decode_u_32(deserializer);
+    var var_adaptiveWindowSize = sse_decode_u_32(deserializer);
+    var var_adaptiveRetentionLimit = sse_decode_u_32(deserializer);
+    return TxtPageCacheSelection(
+      cache: var_cache,
+      usedHotWindow: var_usedHotWindow,
+      restoredFirstPageIndex: var_restoredFirstPageIndex,
+      restoredLastPageIndex: var_restoredLastPageIndex,
+      adaptiveWindowSize: var_adaptiveWindowSize,
+      adaptiveRetentionLimit: var_adaptiveRetentionLimit,
+    );
+  }
+
+  @protected
   int sse_decode_u_16(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint16();
@@ -1486,18 +2377,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getUint8() != 0;
-  }
-
-  @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void sse_encode_Map_String_list_txt_page_break_cache_None(
+    Map<String, List<TxtPageBreakCache>> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_record_string_list_txt_page_break_cache(
+      self.entries.map((e) => (e.key, e.value)).toList(),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_Map_String_txt_page_break_cache_None(
+    Map<String, TxtPageBreakCache> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_record_string_txt_page_break_cache(
+      self.entries.map((e) => (e.key, e.value)).toList(),
+      serializer,
+    );
   }
 
   @protected
@@ -1559,12 +2468,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint8(self ? 1 : 0);
+  }
+
+  @protected
   void sse_encode_box_autoadd_bookshelf_entry(
     BookshelfEntry self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bookshelf_entry(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_txt_layout_feedback_input(
+    TxtLayoutFeedbackInput self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_txt_layout_feedback_input(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_txt_layout_telemetry(
+    TxtLayoutTelemetry self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_txt_layout_telemetry(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_txt_page_cache_selection(
+    TxtPageCacheSelection self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_txt_page_cache_selection(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self, serializer);
   }
 
   @protected
@@ -1627,6 +2575,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_prim_u_64_strict(
+    Uint64List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint64List(self);
+  }
+
+  @protected
   void sse_encode_list_prim_u_8_loose(
     List<int> self,
     SseSerializer serializer,
@@ -1649,6 +2607,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_record_string_list_txt_page_break_cache(
+    List<(String, List<TxtPageBreakCache>)> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_record_string_list_txt_page_break_cache(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_record_string_string(
     List<(String, String)> self,
     SseSerializer serializer,
@@ -1657,6 +2627,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_record_string_string(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_record_string_txt_page_break_cache(
+    List<(String, TxtPageBreakCache)> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_record_string_txt_page_break_cache(item, serializer);
     }
   }
 
@@ -1697,6 +2679,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_txt_page_break_cache(
+    List<TxtPageBreakCache> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_txt_page_break_cache(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -1707,6 +2701,52 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_txt_layout_telemetry(
+    TxtLayoutTelemetry? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_txt_layout_telemetry(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_txt_page_cache_selection(
+    TxtPageCacheSelection? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_txt_page_cache_selection(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_u_64(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_record_string_list_txt_page_break_cache(
+    (String, List<TxtPageBreakCache>) self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.$1, serializer);
+    sse_encode_list_txt_page_break_cache(self.$2, serializer);
+  }
+
+  @protected
   void sse_encode_record_string_string(
     (String, String) self,
     SseSerializer serializer,
@@ -1714,6 +2754,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.$1, serializer);
     sse_encode_String(self.$2, serializer);
+  }
+
+  @protected
+  void sse_encode_record_string_txt_page_break_cache(
+    (String, TxtPageBreakCache) self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.$1, serializer);
+    sse_encode_txt_page_break_cache(self.$2, serializer);
   }
 
   @protected
@@ -1751,6 +2801,119 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_txt_layout_cache(
+    TxtLayoutCache self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_Map_String_txt_page_break_cache_None(self.chapters, serializer);
+    sse_encode_Map_String_list_txt_page_break_cache_None(
+      self.hotWindows,
+      serializer,
+    );
+    sse_encode_txt_layout_telemetry(self.telemetry, serializer);
+    sse_encode_opt_box_autoadd_u_64(self.updatedAtMillis, serializer);
+  }
+
+  @protected
+  void sse_encode_txt_layout_feedback_input(
+    TxtLayoutFeedbackInput self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.targetPageIndex, serializer);
+    sse_encode_u_32(self.restoredFirstPageIndex, serializer);
+    sse_encode_u_32(self.restoredLastPageIndex, serializer);
+    sse_encode_bool(self.usedHotWindow, serializer);
+    sse_encode_bool(self.recordRestoreEvent, serializer);
+    sse_encode_u_64(self.bindTotalMicros, serializer);
+    sse_encode_u_32(self.bindSampleCount, serializer);
+    sse_encode_u_64(self.bindMaxMicros, serializer);
+    sse_encode_u_64(self.layoutTotalMicros, serializer);
+    sse_encode_u_32(self.layoutSampleCount, serializer);
+    sse_encode_u_64(self.layoutMaxMicros, serializer);
+    sse_encode_u_32(self.prebindRequestCount, serializer);
+    sse_encode_u_32(self.prebindHitCount, serializer);
+    sse_encode_u_64(self.visiblePreboundBindTotalMicros, serializer);
+    sse_encode_u_32(self.visiblePreboundBindSampleCount, serializer);
+    sse_encode_u_64(self.visiblePreboundBindMaxMicros, serializer);
+    sse_encode_u_64(self.visiblePreboundLayoutTotalMicros, serializer);
+    sse_encode_u_32(self.visiblePreboundLayoutSampleCount, serializer);
+    sse_encode_u_64(self.visiblePreboundLayoutMaxMicros, serializer);
+    sse_encode_u_64(self.backgroundPrebindBindTotalMicros, serializer);
+    sse_encode_u_32(self.backgroundPrebindBindSampleCount, serializer);
+    sse_encode_u_64(self.backgroundPrebindBindMaxMicros, serializer);
+    sse_encode_u_64(self.backgroundPrebindLayoutTotalMicros, serializer);
+    sse_encode_u_32(self.backgroundPrebindLayoutSampleCount, serializer);
+    sse_encode_u_64(self.backgroundPrebindLayoutMaxMicros, serializer);
+  }
+
+  @protected
+  void sse_encode_txt_layout_telemetry(
+    TxtLayoutTelemetry self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.hotReadCount, serializer);
+    sse_encode_u_64(self.hotHitCount, serializer);
+    sse_encode_u_64(self.hotMissCount, serializer);
+    sse_encode_u_32(self.averageJumpGapPages, serializer);
+    sse_encode_u_32(self.maxJumpGapPages, serializer);
+    sse_encode_u_64(self.bindSampleCount, serializer);
+    sse_encode_u_64(self.averageBindMicros, serializer);
+    sse_encode_u_64(self.maxBindMicros, serializer);
+    sse_encode_u_64(self.layoutSampleCount, serializer);
+    sse_encode_u_64(self.averageLayoutMicros, serializer);
+    sse_encode_u_64(self.maxLayoutMicros, serializer);
+    sse_encode_u_64(self.prebindRequestCount, serializer);
+    sse_encode_u_64(self.prebindHitCount, serializer);
+    sse_encode_u_64(self.visiblePreboundBindSampleCount, serializer);
+    sse_encode_u_64(self.averageVisiblePreboundBindMicros, serializer);
+    sse_encode_u_64(self.maxVisiblePreboundBindMicros, serializer);
+    sse_encode_u_64(self.visiblePreboundLayoutSampleCount, serializer);
+    sse_encode_u_64(self.averageVisiblePreboundLayoutMicros, serializer);
+    sse_encode_u_64(self.maxVisiblePreboundLayoutMicros, serializer);
+    sse_encode_u_64(self.backgroundPrebindBindSampleCount, serializer);
+    sse_encode_u_64(self.averageBackgroundPrebindBindMicros, serializer);
+    sse_encode_u_64(self.maxBackgroundPrebindBindMicros, serializer);
+    sse_encode_u_64(self.backgroundPrebindLayoutSampleCount, serializer);
+    sse_encode_u_64(self.averageBackgroundPrebindLayoutMicros, serializer);
+    sse_encode_u_64(self.maxBackgroundPrebindLayoutMicros, serializer);
+    sse_encode_u_32(self.adaptiveWindowSize, serializer);
+    sse_encode_u_32(self.adaptiveRetentionLimit, serializer);
+    sse_encode_opt_box_autoadd_u_64(self.updatedAtMillis, serializer);
+  }
+
+  @protected
+  void sse_encode_txt_page_break_cache(
+    TxtPageBreakCache self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.basePageIndex, serializer);
+    sse_encode_u_64(self.startOffset, serializer);
+    sse_encode_list_prim_u_64_strict(self.pageEnds, serializer);
+    sse_encode_u_64(self.nextOffset, serializer);
+    sse_encode_bool(self.hasMore, serializer);
+    sse_encode_u_32(self.lastPageIndex, serializer);
+    sse_encode_opt_box_autoadd_u_64(self.touchedAtMillis, serializer);
+  }
+
+  @protected
+  void sse_encode_txt_page_cache_selection(
+    TxtPageCacheSelection self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_txt_page_break_cache(self.cache, serializer);
+    sse_encode_bool(self.usedHotWindow, serializer);
+    sse_encode_u_32(self.restoredFirstPageIndex, serializer);
+    sse_encode_u_32(self.restoredLastPageIndex, serializer);
+    sse_encode_u_32(self.adaptiveWindowSize, serializer);
+    sse_encode_u_32(self.adaptiveRetentionLimit, serializer);
+  }
+
+  @protected
   void sse_encode_u_16(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint16(self);
@@ -1783,11 +2946,5 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_i_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putInt32(self);
-  }
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putUint8(self ? 1 : 0);
   }
 }

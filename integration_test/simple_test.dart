@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:velora/src/rust/api/simple.dart';
+import 'package:velora/src/rust/api/app_start.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'test_support.dart';

@@ -562,6 +562,7 @@ class PageTurnView extends StatefulWidget {
   final int initialPage;
   final IndexedWidgetBuilder pageBuilder;
   final PageTurnEffectType effect;
+  final VoidCallback? onTapCenter;
   final ValueChanged<int>? onPageChanged;
   final VoidCallback? onReachStart;
   final VoidCallback? onReachEnd;
@@ -572,6 +573,7 @@ class PageTurnView extends StatefulWidget {
     required this.pageBuilder,
     this.initialPage = 0,
     this.effect = PageTurnEffectType.cover,
+    this.onTapCenter,
     this.onPageChanged,
     this.onReachStart,
     this.onReachEnd,
@@ -592,11 +594,53 @@ class PageTurnViewState extends State<PageTurnView> {
   double? _animationEnd;
   bool _commitAnimation = false;
   PageTurnDirection? _edgeDragDirection;
+  Widget? _cachedTransitionCurrentPage;
+  Widget? _cachedTransitionNextPage;
+  int? _cachedTransitionCurrentIndex;
+  int? _cachedTransitionNextIndex;
 
   bool get _isAnimating => _animationBegin != null && _animationEnd != null;
+  bool get _hasTransitionPreview =>
+      _target != null && (_isAnimating || _dragProgress > 0);
   int get debugCurrentPage => _current;
   bool get debugHasInteractivePreview => _target != null && _dragProgress > 0;
   double get debugDragProgress => _dragProgress;
+
+  void _clearTransitionCache() {
+    _cachedTransitionCurrentPage = null;
+    _cachedTransitionNextPage = null;
+    _cachedTransitionCurrentIndex = null;
+    _cachedTransitionNextIndex = null;
+  }
+
+  Widget _buildPage(BuildContext context, int index) {
+    return RepaintBoundary(child: widget.pageBuilder(context, index));
+  }
+
+  Widget _currentPageFor(BuildContext context) {
+    if (!_hasTransitionPreview) {
+      return _buildPage(context, _current);
+    }
+    if (_cachedTransitionCurrentPage == null ||
+        _cachedTransitionCurrentIndex != _current) {
+      _cachedTransitionCurrentPage = _buildPage(context, _current);
+      _cachedTransitionCurrentIndex = _current;
+    }
+    return _cachedTransitionCurrentPage!;
+  }
+
+  Widget? _targetPageFor(BuildContext context) {
+    final target = _target;
+    if (!_hasTransitionPreview || target == null) {
+      return null;
+    }
+    if (_cachedTransitionNextPage == null ||
+        _cachedTransitionNextIndex != target) {
+      _cachedTransitionNextPage = _buildPage(context, target);
+      _cachedTransitionNextIndex = target;
+    }
+    return _cachedTransitionNextPage!;
+  }
 
   void debugPreview(PageTurnDirection direction, double progress) {
     if (!_canTurn(direction)) return;
@@ -626,6 +670,7 @@ class PageTurnViewState extends State<PageTurnView> {
       _animationEnd = null;
       _edgeDragDirection = null;
       _commitAnimation = false;
+      _clearTransitionCache();
     });
     if (commit && target != null) {
       widget.onPageChanged?.call(_current);
@@ -653,6 +698,10 @@ class PageTurnViewState extends State<PageTurnView> {
       _dragFingerX = null;
       _animationBegin = null;
       _animationEnd = null;
+    }
+    if (oldWidget.pageBuilder != widget.pageBuilder ||
+        oldWidget.pageCount != widget.pageCount) {
+      _clearTransitionCache();
     }
   }
 
@@ -723,6 +772,7 @@ class PageTurnViewState extends State<PageTurnView> {
       _animationBegin = null;
       _animationEnd = null;
       _edgeDragDirection = null;
+      _clearTransitionCache();
     });
     widget.onPageChanged?.call(_current);
   }
@@ -741,6 +791,7 @@ class PageTurnViewState extends State<PageTurnView> {
       _animationEnd = null;
       _edgeDragDirection = null;
       _commitAnimation = false;
+      _clearTransitionCache();
     });
     if (commit && target != null) {
       widget.onPageChanged?.call(_current);
@@ -790,6 +841,7 @@ class PageTurnViewState extends State<PageTurnView> {
         _dragFingerX = null;
         _dragProgress = 0;
         _edgeDragDirection = null;
+        _clearTransitionCache();
       });
       return;
     }
@@ -800,6 +852,7 @@ class PageTurnViewState extends State<PageTurnView> {
         _dragFingerX = null;
         _dragProgress = 0;
         _edgeDragDirection = null;
+        _clearTransitionCache();
       });
       return;
     }
@@ -820,10 +873,8 @@ class PageTurnViewState extends State<PageTurnView> {
       return const SizedBox.shrink();
     }
 
-    final currentPage = widget.pageBuilder(context, _current);
-    final nextPage = _target != null
-        ? widget.pageBuilder(context, _target!)
-        : null;
+    final currentPage = _currentPageFor(context);
+    final nextPage = _targetPageFor(context);
 
     final child = _isAnimating && _target != null
         ? _TurnAnimation(
@@ -855,6 +906,8 @@ class PageTurnViewState extends State<PageTurnView> {
           prev();
         } else if (details.localPosition.dx > width * 2 / 3) {
           next();
+        } else {
+          widget.onTapCenter?.call();
         }
       },
       onHorizontalDragStart: (details) {
@@ -901,38 +954,6 @@ class PageTurnViewState extends State<PageTurnView> {
       },
       onHorizontalDragCancel: _cancelInteractiveTurn,
       child: child,
-    );
-  }
-}
-
-class ReaderTapRegion extends StatelessWidget {
-  final VoidCallback onTapCenter;
-  final Widget child;
-
-  const ReaderTapRegion({
-    super.key,
-    required this.onTapCenter,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        child,
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTapUp: (details) {
-              final width = MediaQuery.sizeOf(context).width;
-              if (details.localPosition.dx > width / 3 &&
-                  details.localPosition.dx < width * 2 / 3) {
-                onTapCenter();
-              }
-            },
-          ),
-        ),
-      ],
     );
   }
 }

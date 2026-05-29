@@ -6,9 +6,9 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `be_u16`, `be_u32`, `cached_txt`, `detect_encoding`, `extension`, `extract_epub_cover`, `fallback_title`, `html_title`, `html_to_text`, `join_epub_path`, `meta_from_parsed`, `mime_from_path`, `mobi_encoding`, `normalize_inline`, `normalize_text`, `palmdoc_decompress`, `parse_book`, `parse_chapters`, `parse_epub`, `parse_mobi`, `parse_txt`, `read_text_range`, `read_zip_bytes`, `read_zip_string`, `split_fallback`, `store_txt`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `EpubManifestItem`, `ParsedBook`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `apply_layout_feedback`, `be_u16`, `be_u32`, `best_scored_encoding`, `blend_u32_average`, `blend_u64_average`, `build_hot_page_windows`, `cached_txt_file_encoding`, `cached_txt`, `choose_best_text_encoding`, `decode_bytes_with_encoding`, `default_hot_window_retention`, `default_hot_window_size`, `detect_encoding`, `detect_file_encoding`, `ensure_txt_index_cache`, `extension`, `extract_epub_cover`, `fallback_title`, `html_title`, `html_to_text`, `is_east_asian_text`, `is_suspicious_mojibake_latin`, `join_epub_path`, `load_txt_index_cache`, `merge_hot_window`, `meta_from_parsed`, `mime_from_path`, `mobi_encoding`, `modified_millis`, `normalize_inline`, `normalize_text`, `open_txt_file_meta`, `palmdoc_decompress`, `parse_book`, `parse_chapters`, `parse_epub`, `parse_mobi`, `parse_txt`, `push_hot_page_window`, `read_file_window`, `read_mmap_window`, `read_seek_window`, `read_text_range`, `read_txt_chapter_file`, `read_zip_bytes`, `read_zip_string`, `retune_hot_window_policy`, `save_txt_index_cache_record`, `scan_txt_file_chapters`, `score_decoded_text`, `select_txt_page_cache`, `split_detected_chapters`, `split_fallback`, `split_sparse_ranges`, `store_txt_file_info`, `store_txt`, `target_gap_pages`, `touch_hot_window`, `txt_index_cache_candidates`, `txt_index_cache_key`, `validate_txt_page_cache`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `EpubManifestItem`, `ParsedBook`, `SelectedTxtPageCache`, `TxtFileInfo`, `TxtIndexCache`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 BookMeta openBookFile({required String path}) =>
     RustLib.instance.api.crateApiBookFileOpenBookFile(path: path);
@@ -31,6 +31,62 @@ String readBookChapterFile({
   path: path,
   start: start,
   end: end,
+);
+
+TxtPageCacheSelection? readTxtPageCache({
+  required String path,
+  required String layoutKey,
+  required int chapterIndex,
+  required int targetPageIndex,
+  required BigInt textLength,
+}) => RustLib.instance.api.crateApiBookFileReadTxtPageCache(
+  path: path,
+  layoutKey: layoutKey,
+  chapterIndex: chapterIndex,
+  targetPageIndex: targetPageIndex,
+  textLength: textLength,
+);
+
+void writeTxtPageCache({
+  required String path,
+  required String layoutKey,
+  required int chapterIndex,
+  required int basePageIndex,
+  required BigInt startOffset,
+  required Uint64List pageEnds,
+  required BigInt nextOffset,
+  required bool hasMore,
+  required int lastPageIndex,
+}) => RustLib.instance.api.crateApiBookFileWriteTxtPageCache(
+  path: path,
+  layoutKey: layoutKey,
+  chapterIndex: chapterIndex,
+  basePageIndex: basePageIndex,
+  startOffset: startOffset,
+  pageEnds: pageEnds,
+  nextOffset: nextOffset,
+  hasMore: hasMore,
+  lastPageIndex: lastPageIndex,
+);
+
+void reportTxtLayoutFeedback({
+  required String path,
+  required String layoutKey,
+  required int chapterIndex,
+  required TxtLayoutFeedbackInput feedback,
+}) => RustLib.instance.api.crateApiBookFileReportTxtLayoutFeedback(
+  path: path,
+  layoutKey: layoutKey,
+  chapterIndex: chapterIndex,
+  feedback: feedback,
+);
+
+TxtLayoutTelemetry? readTxtLayoutTelemetry({
+  required String path,
+  required String layoutKey,
+}) => RustLib.instance.api.crateApiBookFileReadTxtLayoutTelemetry(
+  path: path,
+  layoutKey: layoutKey,
 );
 
 String readBookChapterBytes({
@@ -116,4 +172,387 @@ class BookMeta {
           sizeBytes == other.sizeBytes &&
           coverDataUrl == other.coverDataUrl &&
           chapters == other.chapters;
+}
+
+class TxtLayoutCache {
+  final Map<String, TxtPageBreakCache> chapters;
+  final Map<String, List<TxtPageBreakCache>> hotWindows;
+  final TxtLayoutTelemetry telemetry;
+  final BigInt? updatedAtMillis;
+
+  const TxtLayoutCache({
+    required this.chapters,
+    required this.hotWindows,
+    required this.telemetry,
+    this.updatedAtMillis,
+  });
+
+  static Future<TxtLayoutCache> default_() =>
+      RustLib.instance.api.crateApiBookFileTxtLayoutCacheDefault();
+
+  @override
+  int get hashCode =>
+      chapters.hashCode ^
+      hotWindows.hashCode ^
+      telemetry.hashCode ^
+      updatedAtMillis.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TxtLayoutCache &&
+          runtimeType == other.runtimeType &&
+          chapters == other.chapters &&
+          hotWindows == other.hotWindows &&
+          telemetry == other.telemetry &&
+          updatedAtMillis == other.updatedAtMillis;
+}
+
+class TxtLayoutFeedbackInput {
+  final int targetPageIndex;
+  final int restoredFirstPageIndex;
+  final int restoredLastPageIndex;
+  final bool usedHotWindow;
+  final bool recordRestoreEvent;
+  final BigInt bindTotalMicros;
+  final int bindSampleCount;
+  final BigInt bindMaxMicros;
+  final BigInt layoutTotalMicros;
+  final int layoutSampleCount;
+  final BigInt layoutMaxMicros;
+  final int prebindRequestCount;
+  final int prebindHitCount;
+  final BigInt visiblePreboundBindTotalMicros;
+  final int visiblePreboundBindSampleCount;
+  final BigInt visiblePreboundBindMaxMicros;
+  final BigInt visiblePreboundLayoutTotalMicros;
+  final int visiblePreboundLayoutSampleCount;
+  final BigInt visiblePreboundLayoutMaxMicros;
+  final BigInt backgroundPrebindBindTotalMicros;
+  final int backgroundPrebindBindSampleCount;
+  final BigInt backgroundPrebindBindMaxMicros;
+  final BigInt backgroundPrebindLayoutTotalMicros;
+  final int backgroundPrebindLayoutSampleCount;
+  final BigInt backgroundPrebindLayoutMaxMicros;
+
+  const TxtLayoutFeedbackInput({
+    required this.targetPageIndex,
+    required this.restoredFirstPageIndex,
+    required this.restoredLastPageIndex,
+    required this.usedHotWindow,
+    required this.recordRestoreEvent,
+    required this.bindTotalMicros,
+    required this.bindSampleCount,
+    required this.bindMaxMicros,
+    required this.layoutTotalMicros,
+    required this.layoutSampleCount,
+    required this.layoutMaxMicros,
+    required this.prebindRequestCount,
+    required this.prebindHitCount,
+    required this.visiblePreboundBindTotalMicros,
+    required this.visiblePreboundBindSampleCount,
+    required this.visiblePreboundBindMaxMicros,
+    required this.visiblePreboundLayoutTotalMicros,
+    required this.visiblePreboundLayoutSampleCount,
+    required this.visiblePreboundLayoutMaxMicros,
+    required this.backgroundPrebindBindTotalMicros,
+    required this.backgroundPrebindBindSampleCount,
+    required this.backgroundPrebindBindMaxMicros,
+    required this.backgroundPrebindLayoutTotalMicros,
+    required this.backgroundPrebindLayoutSampleCount,
+    required this.backgroundPrebindLayoutMaxMicros,
+  });
+
+  @override
+  int get hashCode =>
+      targetPageIndex.hashCode ^
+      restoredFirstPageIndex.hashCode ^
+      restoredLastPageIndex.hashCode ^
+      usedHotWindow.hashCode ^
+      recordRestoreEvent.hashCode ^
+      bindTotalMicros.hashCode ^
+      bindSampleCount.hashCode ^
+      bindMaxMicros.hashCode ^
+      layoutTotalMicros.hashCode ^
+      layoutSampleCount.hashCode ^
+      layoutMaxMicros.hashCode ^
+      prebindRequestCount.hashCode ^
+      prebindHitCount.hashCode ^
+      visiblePreboundBindTotalMicros.hashCode ^
+      visiblePreboundBindSampleCount.hashCode ^
+      visiblePreboundBindMaxMicros.hashCode ^
+      visiblePreboundLayoutTotalMicros.hashCode ^
+      visiblePreboundLayoutSampleCount.hashCode ^
+      visiblePreboundLayoutMaxMicros.hashCode ^
+      backgroundPrebindBindTotalMicros.hashCode ^
+      backgroundPrebindBindSampleCount.hashCode ^
+      backgroundPrebindBindMaxMicros.hashCode ^
+      backgroundPrebindLayoutTotalMicros.hashCode ^
+      backgroundPrebindLayoutSampleCount.hashCode ^
+      backgroundPrebindLayoutMaxMicros.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TxtLayoutFeedbackInput &&
+          runtimeType == other.runtimeType &&
+          targetPageIndex == other.targetPageIndex &&
+          restoredFirstPageIndex == other.restoredFirstPageIndex &&
+          restoredLastPageIndex == other.restoredLastPageIndex &&
+          usedHotWindow == other.usedHotWindow &&
+          recordRestoreEvent == other.recordRestoreEvent &&
+          bindTotalMicros == other.bindTotalMicros &&
+          bindSampleCount == other.bindSampleCount &&
+          bindMaxMicros == other.bindMaxMicros &&
+          layoutTotalMicros == other.layoutTotalMicros &&
+          layoutSampleCount == other.layoutSampleCount &&
+          layoutMaxMicros == other.layoutMaxMicros &&
+          prebindRequestCount == other.prebindRequestCount &&
+          prebindHitCount == other.prebindHitCount &&
+          visiblePreboundBindTotalMicros ==
+              other.visiblePreboundBindTotalMicros &&
+          visiblePreboundBindSampleCount ==
+              other.visiblePreboundBindSampleCount &&
+          visiblePreboundBindMaxMicros == other.visiblePreboundBindMaxMicros &&
+          visiblePreboundLayoutTotalMicros ==
+              other.visiblePreboundLayoutTotalMicros &&
+          visiblePreboundLayoutSampleCount ==
+              other.visiblePreboundLayoutSampleCount &&
+          visiblePreboundLayoutMaxMicros ==
+              other.visiblePreboundLayoutMaxMicros &&
+          backgroundPrebindBindTotalMicros ==
+              other.backgroundPrebindBindTotalMicros &&
+          backgroundPrebindBindSampleCount ==
+              other.backgroundPrebindBindSampleCount &&
+          backgroundPrebindBindMaxMicros ==
+              other.backgroundPrebindBindMaxMicros &&
+          backgroundPrebindLayoutTotalMicros ==
+              other.backgroundPrebindLayoutTotalMicros &&
+          backgroundPrebindLayoutSampleCount ==
+              other.backgroundPrebindLayoutSampleCount &&
+          backgroundPrebindLayoutMaxMicros ==
+              other.backgroundPrebindLayoutMaxMicros;
+}
+
+class TxtLayoutTelemetry {
+  final BigInt hotReadCount;
+  final BigInt hotHitCount;
+  final BigInt hotMissCount;
+  final int averageJumpGapPages;
+  final int maxJumpGapPages;
+  final BigInt bindSampleCount;
+  final BigInt averageBindMicros;
+  final BigInt maxBindMicros;
+  final BigInt layoutSampleCount;
+  final BigInt averageLayoutMicros;
+  final BigInt maxLayoutMicros;
+  final BigInt prebindRequestCount;
+  final BigInt prebindHitCount;
+  final BigInt visiblePreboundBindSampleCount;
+  final BigInt averageVisiblePreboundBindMicros;
+  final BigInt maxVisiblePreboundBindMicros;
+  final BigInt visiblePreboundLayoutSampleCount;
+  final BigInt averageVisiblePreboundLayoutMicros;
+  final BigInt maxVisiblePreboundLayoutMicros;
+  final BigInt backgroundPrebindBindSampleCount;
+  final BigInt averageBackgroundPrebindBindMicros;
+  final BigInt maxBackgroundPrebindBindMicros;
+  final BigInt backgroundPrebindLayoutSampleCount;
+  final BigInt averageBackgroundPrebindLayoutMicros;
+  final BigInt maxBackgroundPrebindLayoutMicros;
+  final int adaptiveWindowSize;
+  final int adaptiveRetentionLimit;
+  final BigInt? updatedAtMillis;
+
+  const TxtLayoutTelemetry({
+    required this.hotReadCount,
+    required this.hotHitCount,
+    required this.hotMissCount,
+    required this.averageJumpGapPages,
+    required this.maxJumpGapPages,
+    required this.bindSampleCount,
+    required this.averageBindMicros,
+    required this.maxBindMicros,
+    required this.layoutSampleCount,
+    required this.averageLayoutMicros,
+    required this.maxLayoutMicros,
+    required this.prebindRequestCount,
+    required this.prebindHitCount,
+    required this.visiblePreboundBindSampleCount,
+    required this.averageVisiblePreboundBindMicros,
+    required this.maxVisiblePreboundBindMicros,
+    required this.visiblePreboundLayoutSampleCount,
+    required this.averageVisiblePreboundLayoutMicros,
+    required this.maxVisiblePreboundLayoutMicros,
+    required this.backgroundPrebindBindSampleCount,
+    required this.averageBackgroundPrebindBindMicros,
+    required this.maxBackgroundPrebindBindMicros,
+    required this.backgroundPrebindLayoutSampleCount,
+    required this.averageBackgroundPrebindLayoutMicros,
+    required this.maxBackgroundPrebindLayoutMicros,
+    required this.adaptiveWindowSize,
+    required this.adaptiveRetentionLimit,
+    this.updatedAtMillis,
+  });
+
+  static Future<TxtLayoutTelemetry> default_() =>
+      RustLib.instance.api.crateApiBookFileTxtLayoutTelemetryDefault();
+
+  @override
+  int get hashCode =>
+      hotReadCount.hashCode ^
+      hotHitCount.hashCode ^
+      hotMissCount.hashCode ^
+      averageJumpGapPages.hashCode ^
+      maxJumpGapPages.hashCode ^
+      bindSampleCount.hashCode ^
+      averageBindMicros.hashCode ^
+      maxBindMicros.hashCode ^
+      layoutSampleCount.hashCode ^
+      averageLayoutMicros.hashCode ^
+      maxLayoutMicros.hashCode ^
+      prebindRequestCount.hashCode ^
+      prebindHitCount.hashCode ^
+      visiblePreboundBindSampleCount.hashCode ^
+      averageVisiblePreboundBindMicros.hashCode ^
+      maxVisiblePreboundBindMicros.hashCode ^
+      visiblePreboundLayoutSampleCount.hashCode ^
+      averageVisiblePreboundLayoutMicros.hashCode ^
+      maxVisiblePreboundLayoutMicros.hashCode ^
+      backgroundPrebindBindSampleCount.hashCode ^
+      averageBackgroundPrebindBindMicros.hashCode ^
+      maxBackgroundPrebindBindMicros.hashCode ^
+      backgroundPrebindLayoutSampleCount.hashCode ^
+      averageBackgroundPrebindLayoutMicros.hashCode ^
+      maxBackgroundPrebindLayoutMicros.hashCode ^
+      adaptiveWindowSize.hashCode ^
+      adaptiveRetentionLimit.hashCode ^
+      updatedAtMillis.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TxtLayoutTelemetry &&
+          runtimeType == other.runtimeType &&
+          hotReadCount == other.hotReadCount &&
+          hotHitCount == other.hotHitCount &&
+          hotMissCount == other.hotMissCount &&
+          averageJumpGapPages == other.averageJumpGapPages &&
+          maxJumpGapPages == other.maxJumpGapPages &&
+          bindSampleCount == other.bindSampleCount &&
+          averageBindMicros == other.averageBindMicros &&
+          maxBindMicros == other.maxBindMicros &&
+          layoutSampleCount == other.layoutSampleCount &&
+          averageLayoutMicros == other.averageLayoutMicros &&
+          maxLayoutMicros == other.maxLayoutMicros &&
+          prebindRequestCount == other.prebindRequestCount &&
+          prebindHitCount == other.prebindHitCount &&
+          visiblePreboundBindSampleCount ==
+              other.visiblePreboundBindSampleCount &&
+          averageVisiblePreboundBindMicros ==
+              other.averageVisiblePreboundBindMicros &&
+          maxVisiblePreboundBindMicros == other.maxVisiblePreboundBindMicros &&
+          visiblePreboundLayoutSampleCount ==
+              other.visiblePreboundLayoutSampleCount &&
+          averageVisiblePreboundLayoutMicros ==
+              other.averageVisiblePreboundLayoutMicros &&
+          maxVisiblePreboundLayoutMicros ==
+              other.maxVisiblePreboundLayoutMicros &&
+          backgroundPrebindBindSampleCount ==
+              other.backgroundPrebindBindSampleCount &&
+          averageBackgroundPrebindBindMicros ==
+              other.averageBackgroundPrebindBindMicros &&
+          maxBackgroundPrebindBindMicros ==
+              other.maxBackgroundPrebindBindMicros &&
+          backgroundPrebindLayoutSampleCount ==
+              other.backgroundPrebindLayoutSampleCount &&
+          averageBackgroundPrebindLayoutMicros ==
+              other.averageBackgroundPrebindLayoutMicros &&
+          maxBackgroundPrebindLayoutMicros ==
+              other.maxBackgroundPrebindLayoutMicros &&
+          adaptiveWindowSize == other.adaptiveWindowSize &&
+          adaptiveRetentionLimit == other.adaptiveRetentionLimit &&
+          updatedAtMillis == other.updatedAtMillis;
+}
+
+class TxtPageBreakCache {
+  final int basePageIndex;
+  final BigInt startOffset;
+  final Uint64List pageEnds;
+  final BigInt nextOffset;
+  final bool hasMore;
+  final int lastPageIndex;
+  final BigInt? touchedAtMillis;
+
+  const TxtPageBreakCache({
+    required this.basePageIndex,
+    required this.startOffset,
+    required this.pageEnds,
+    required this.nextOffset,
+    required this.hasMore,
+    required this.lastPageIndex,
+    this.touchedAtMillis,
+  });
+
+  @override
+  int get hashCode =>
+      basePageIndex.hashCode ^
+      startOffset.hashCode ^
+      pageEnds.hashCode ^
+      nextOffset.hashCode ^
+      hasMore.hashCode ^
+      lastPageIndex.hashCode ^
+      touchedAtMillis.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TxtPageBreakCache &&
+          runtimeType == other.runtimeType &&
+          basePageIndex == other.basePageIndex &&
+          startOffset == other.startOffset &&
+          pageEnds == other.pageEnds &&
+          nextOffset == other.nextOffset &&
+          hasMore == other.hasMore &&
+          lastPageIndex == other.lastPageIndex &&
+          touchedAtMillis == other.touchedAtMillis;
+}
+
+class TxtPageCacheSelection {
+  final TxtPageBreakCache cache;
+  final bool usedHotWindow;
+  final int restoredFirstPageIndex;
+  final int restoredLastPageIndex;
+  final int adaptiveWindowSize;
+  final int adaptiveRetentionLimit;
+
+  const TxtPageCacheSelection({
+    required this.cache,
+    required this.usedHotWindow,
+    required this.restoredFirstPageIndex,
+    required this.restoredLastPageIndex,
+    required this.adaptiveWindowSize,
+    required this.adaptiveRetentionLimit,
+  });
+
+  @override
+  int get hashCode =>
+      cache.hashCode ^
+      usedHotWindow.hashCode ^
+      restoredFirstPageIndex.hashCode ^
+      restoredLastPageIndex.hashCode ^
+      adaptiveWindowSize.hashCode ^
+      adaptiveRetentionLimit.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TxtPageCacheSelection &&
+          runtimeType == other.runtimeType &&
+          cache == other.cache &&
+          usedHotWindow == other.usedHotWindow &&
+          restoredFirstPageIndex == other.restoredFirstPageIndex &&
+          restoredLastPageIndex == other.restoredLastPageIndex &&
+          adaptiveWindowSize == other.adaptiveWindowSize &&
+          adaptiveRetentionLimit == other.adaptiveRetentionLimit;
 }

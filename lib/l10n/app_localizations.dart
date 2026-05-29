@@ -112,6 +112,10 @@ class AppLocalizations {
   String get noSources => _t('noSources');
   String get noSourcesSub => _t('noSourcesSub');
   String get importJson => _t('importJson');
+  String get importByQrCode => _t('importByQrCode');
+  String get scanQrCode => _t('scanQrCode');
+  String get scanQrCodeHint => _t('scanQrCodeHint');
+  String get cameraPermissionRequired => _t('cameraPermissionRequired');
   String get import => _t('import');
   String get recommendedBooks => _t('recommendedBooks');
   String get discoverAutoRecommendations => _t('discoverAutoRecommendations');
@@ -219,6 +223,11 @@ final Map<String, Map<String, String>> _translations = {
     'noSourcesSub':
         'Import JSON, a source URL, or a compatible reading source link.',
     'importJson': 'Import source',
+    'importByQrCode': 'Import by QR code',
+    'scanQrCode': 'Scan QR code',
+    'scanQrCodeHint': 'Point the camera at a source QR code to import it.',
+    'cameraPermissionRequired':
+        'Camera permission is required for QR code import.',
     'import': 'Import',
     'recommendedBooks': 'Recommended now',
     'discoverAutoRecommendations':
@@ -312,6 +321,10 @@ final Map<String, Map<String, String>> _translations = {
     'noSources': '尚未添加书源',
     'noSourcesSub': '导入 JSON、书源地址或兼容的阅读书源链接即可开启在线阅读。',
     'importJson': '导入书源',
+    'importByQrCode': '扫码导入',
+    'scanQrCode': '扫描二维码',
+    'scanQrCodeHint': '将二维码放入取景框内即可导入书源。',
+    'cameraPermissionRequired': '扫码导入需要相机权限。',
     'import': '导入',
     'recommendedBooks': '为你推荐',
     'discoverAutoRecommendations': '已从启用书源自动抓取首批可读内容。',

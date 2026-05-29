@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import '../../src/rust/api/book_file.dart' as book_file;
 
+const _bookMetaSchemaVersion = 2;
+
 class BookSourceSignature {
   final int? sizeBytes;
   final int? modifiedAtMillis;
@@ -12,8 +14,13 @@ class BookSourceSignature {
 class DecodedBookMeta {
   final book_file.BookMeta meta;
   final BookSourceSignature sourceSignature;
+  final int schemaVersion;
 
-  const DecodedBookMeta({required this.meta, required this.sourceSignature});
+  const DecodedBookMeta({
+    required this.meta,
+    required this.sourceSignature,
+    required this.schemaVersion,
+  });
 }
 
 String encodeBookMeta(
@@ -22,6 +29,7 @@ String encodeBookMeta(
   int? sourceModifiedAtMillis,
 }) {
   return jsonEncode({
+    'schemaVersion': _bookMetaSchemaVersion,
     'locator': meta.locator,
     'title': meta.title,
     'author': meta.author,
@@ -82,6 +90,7 @@ DecodedBookMeta? decodeBookMetaRecord(String? raw) {
         sizeBytes: (map['sourceSizeBytes'] as num?)?.toInt(),
         modifiedAtMillis: (map['sourceModifiedAtMillis'] as num?)?.toInt(),
       ),
+      schemaVersion: (map['schemaVersion'] as num?)?.toInt() ?? 1,
     );
   } catch (_) {
     return null;

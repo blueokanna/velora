@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -977944047;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1207405332;
 
 // Section: executor
 
@@ -46,7 +46,7 @@ flutter_rust_bridge::frb_generated_default_handler!();
 
 // Section: wire_funcs
 
-fn wire__crate__api__simple__engine_version_impl(
+fn wire__crate__api__app_start__engine_version_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
@@ -69,7 +69,7 @@ fn wire__crate__api__simple__engine_version_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             transform_result_sse::<_, ()>((move || {
-                let output_ok = Result::<_, ()>::Ok(crate::api::simple::engine_version())?;
+                let output_ok = Result::<_, ()>::Ok(crate::api::app_start::engine_version())?;
                 Ok(output_ok)
             })())
         },
@@ -180,7 +180,7 @@ fn wire__crate__api__http_source__http_get_impl(
         },
     )
 }
-fn wire__crate__api__simple__init_app_impl(
+fn wire__crate__api__app_start__init_app_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -206,7 +206,7 @@ fn wire__crate__api__simple__init_app_impl(
             move |context| {
                 transform_result_sse::<_, ()>((move || {
                     let output_ok = Result::<_, ()>::Ok({
-                        crate::api::simple::init_app();
+                        crate::api::app_start::init_app();
                     })?;
                     Ok(output_ok)
                 })())
@@ -559,6 +559,82 @@ fn wire__crate__api__txt_book__read_chapter_bytes_impl(
         },
     )
 }
+fn wire__crate__api__book_file__read_txt_layout_telemetry_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "read_txt_layout_telemetry",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            let api_layout_key = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok =
+                        crate::api::book_file::read_txt_layout_telemetry(api_path, api_layout_key)?;
+                    Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
+fn wire__crate__api__book_file__read_txt_page_cache_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "read_txt_page_cache",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            let api_layout_key = <String>::sse_decode(&mut deserializer);
+            let api_chapter_index = <u32>::sse_decode(&mut deserializer);
+            let api_target_page_index = <u32>::sse_decode(&mut deserializer);
+            let api_text_length = <u64>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::api::book_file::read_txt_page_cache(
+                        api_path,
+                        api_layout_key,
+                        api_chapter_index,
+                        api_target_page_index,
+                        api_text_length,
+                    )?;
+                    Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
 fn wire__crate__api__storage__remove_book_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -585,6 +661,47 @@ fn wire__crate__api__storage__remove_book_impl(
             transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                 (move || {
                     let output_ok = crate::api::storage::remove_book(api_id)?;
+                    Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
+fn wire__crate__api__book_file__report_txt_layout_feedback_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "report_txt_layout_feedback",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            let api_layout_key = <String>::sse_decode(&mut deserializer);
+            let api_chapter_index = <u32>::sse_decode(&mut deserializer);
+            let api_feedback =
+                <crate::api::book_file::TxtLayoutFeedbackInput>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::api::book_file::report_txt_layout_feedback(
+                        api_path,
+                        api_layout_key,
+                        api_chapter_index,
+                        api_feedback,
+                    )?;
                     Ok(output_ok)
                 })(),
             )
@@ -778,6 +895,72 @@ fn wire__crate__api__book_source__source_toc_impl(
         },
     )
 }
+fn wire__crate__api__book_file__txt_layout_cache_default_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "txt_layout_cache_default",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Result::<_, ()>::Ok(crate::api::book_file::TxtLayoutCache::default())?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__book_file__txt_layout_telemetry_default_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "txt_layout_telemetry_default",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Result::<_, ()>::Ok(crate::api::book_file::TxtLayoutTelemetry::default())?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__storage__update_progress_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -850,6 +1033,56 @@ fn wire__crate__api__storage__upsert_book_impl(
         },
     )
 }
+fn wire__crate__api__book_file__write_txt_page_cache_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "write_txt_page_cache",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            let api_layout_key = <String>::sse_decode(&mut deserializer);
+            let api_chapter_index = <u32>::sse_decode(&mut deserializer);
+            let api_base_page_index = <u32>::sse_decode(&mut deserializer);
+            let api_start_offset = <u64>::sse_decode(&mut deserializer);
+            let api_page_ends = <Vec<u64>>::sse_decode(&mut deserializer);
+            let api_next_offset = <u64>::sse_decode(&mut deserializer);
+            let api_has_more = <bool>::sse_decode(&mut deserializer);
+            let api_last_page_index = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::api::book_file::write_txt_page_cache(
+                        api_path,
+                        api_layout_key,
+                        api_chapter_index,
+                        api_base_page_index,
+                        api_start_offset,
+                        api_page_ends,
+                        api_next_offset,
+                        api_has_more,
+                        api_last_page_index,
+                    )?;
+                    Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
 
 // Section: dart2rust
 
@@ -858,6 +1091,27 @@ impl SseDecode for flutter_rust_bridge::for_generated::anyhow::Error {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <String>::sse_decode(deserializer);
         return flutter_rust_bridge::for_generated::anyhow::anyhow!("{}", inner);
+    }
+}
+
+impl SseDecode
+    for std::collections::HashMap<String, Vec<crate::api::book_file::TxtPageBreakCache>>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <Vec<(String, Vec<crate::api::book_file::TxtPageBreakCache>)>>::sse_decode(
+            deserializer,
+        );
+        return inner.into_iter().collect();
+    }
+}
+
+impl SseDecode for std::collections::HashMap<String, crate::api::book_file::TxtPageBreakCache> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner =
+            <Vec<(String, crate::api::book_file::TxtPageBreakCache)>>::sse_decode(deserializer);
+        return inner.into_iter().collect();
     }
 }
 
@@ -959,6 +1213,13 @@ impl SseDecode for crate::api::storage::BookshelfEntry {
     }
 }
 
+impl SseDecode for bool {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_u8().unwrap() != 0
+    }
+}
+
 impl SseDecode for crate::api::txt_book::ChapterIndex {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1038,6 +1299,18 @@ impl SseDecode for Vec<crate::api::txt_book::ChapterIndex> {
     }
 }
 
+impl SseDecode for Vec<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<u64>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<u8> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1050,6 +1323,20 @@ impl SseDecode for Vec<u8> {
     }
 }
 
+impl SseDecode for Vec<(String, Vec<crate::api::book_file::TxtPageBreakCache>)> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(
+                <(String, Vec<crate::api::book_file::TxtPageBreakCache>)>::sse_decode(deserializer),
+            );
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<(String, String)> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1057,6 +1344,20 @@ impl SseDecode for Vec<(String, String)> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<(String, String)>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<(String, crate::api::book_file::TxtPageBreakCache)> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(
+                <(String, crate::api::book_file::TxtPageBreakCache)>::sse_decode(deserializer),
+            );
         }
         return ans_;
     }
@@ -1102,6 +1403,20 @@ impl SseDecode for Vec<crate::api::book_source::TocEntry> {
     }
 }
 
+impl SseDecode for Vec<crate::api::book_file::TxtPageBreakCache> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::book_file::TxtPageBreakCache>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Option<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1113,11 +1428,67 @@ impl SseDecode for Option<String> {
     }
 }
 
+impl SseDecode for Option<crate::api::book_file::TxtLayoutTelemetry> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::book_file::TxtLayoutTelemetry>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::api::book_file::TxtPageCacheSelection> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::book_file::TxtPageCacheSelection>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<u64>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for (String, Vec<crate::api::book_file::TxtPageBreakCache>) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_field0 = <String>::sse_decode(deserializer);
+        let mut var_field1 =
+            <Vec<crate::api::book_file::TxtPageBreakCache>>::sse_decode(deserializer);
+        return (var_field0, var_field1);
+    }
+}
+
 impl SseDecode for (String, String) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_field0 = <String>::sse_decode(deserializer);
         let mut var_field1 = <String>::sse_decode(deserializer);
+        return (var_field0, var_field1);
+    }
+}
+
+impl SseDecode for (String, crate::api::book_file::TxtPageBreakCache) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_field0 = <String>::sse_decode(deserializer);
+        let mut var_field1 = <crate::api::book_file::TxtPageBreakCache>::sse_decode(deserializer);
         return (var_field0, var_field1);
     }
 }
@@ -1182,6 +1553,193 @@ impl SseDecode for crate::api::txt_book::TxtBookMeta {
     }
 }
 
+impl SseDecode for crate::api::book_file::TxtLayoutCache {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_chapters = <std::collections::HashMap<
+            String,
+            crate::api::book_file::TxtPageBreakCache,
+        >>::sse_decode(deserializer);
+        let mut var_hotWindows = <std::collections::HashMap<
+            String,
+            Vec<crate::api::book_file::TxtPageBreakCache>,
+        >>::sse_decode(deserializer);
+        let mut var_telemetry =
+            <crate::api::book_file::TxtLayoutTelemetry>::sse_decode(deserializer);
+        let mut var_updatedAtMillis = <Option<u64>>::sse_decode(deserializer);
+        return crate::api::book_file::TxtLayoutCache {
+            chapters: var_chapters,
+            hot_windows: var_hotWindows,
+            telemetry: var_telemetry,
+            updated_at_millis: var_updatedAtMillis,
+        };
+    }
+}
+
+impl SseDecode for crate::api::book_file::TxtLayoutFeedbackInput {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_targetPageIndex = <u32>::sse_decode(deserializer);
+        let mut var_restoredFirstPageIndex = <u32>::sse_decode(deserializer);
+        let mut var_restoredLastPageIndex = <u32>::sse_decode(deserializer);
+        let mut var_usedHotWindow = <bool>::sse_decode(deserializer);
+        let mut var_recordRestoreEvent = <bool>::sse_decode(deserializer);
+        let mut var_bindTotalMicros = <u64>::sse_decode(deserializer);
+        let mut var_bindSampleCount = <u32>::sse_decode(deserializer);
+        let mut var_bindMaxMicros = <u64>::sse_decode(deserializer);
+        let mut var_layoutTotalMicros = <u64>::sse_decode(deserializer);
+        let mut var_layoutSampleCount = <u32>::sse_decode(deserializer);
+        let mut var_layoutMaxMicros = <u64>::sse_decode(deserializer);
+        let mut var_prebindRequestCount = <u32>::sse_decode(deserializer);
+        let mut var_prebindHitCount = <u32>::sse_decode(deserializer);
+        let mut var_visiblePreboundBindTotalMicros = <u64>::sse_decode(deserializer);
+        let mut var_visiblePreboundBindSampleCount = <u32>::sse_decode(deserializer);
+        let mut var_visiblePreboundBindMaxMicros = <u64>::sse_decode(deserializer);
+        let mut var_visiblePreboundLayoutTotalMicros = <u64>::sse_decode(deserializer);
+        let mut var_visiblePreboundLayoutSampleCount = <u32>::sse_decode(deserializer);
+        let mut var_visiblePreboundLayoutMaxMicros = <u64>::sse_decode(deserializer);
+        let mut var_backgroundPrebindBindTotalMicros = <u64>::sse_decode(deserializer);
+        let mut var_backgroundPrebindBindSampleCount = <u32>::sse_decode(deserializer);
+        let mut var_backgroundPrebindBindMaxMicros = <u64>::sse_decode(deserializer);
+        let mut var_backgroundPrebindLayoutTotalMicros = <u64>::sse_decode(deserializer);
+        let mut var_backgroundPrebindLayoutSampleCount = <u32>::sse_decode(deserializer);
+        let mut var_backgroundPrebindLayoutMaxMicros = <u64>::sse_decode(deserializer);
+        return crate::api::book_file::TxtLayoutFeedbackInput {
+            target_page_index: var_targetPageIndex,
+            restored_first_page_index: var_restoredFirstPageIndex,
+            restored_last_page_index: var_restoredLastPageIndex,
+            used_hot_window: var_usedHotWindow,
+            record_restore_event: var_recordRestoreEvent,
+            bind_total_micros: var_bindTotalMicros,
+            bind_sample_count: var_bindSampleCount,
+            bind_max_micros: var_bindMaxMicros,
+            layout_total_micros: var_layoutTotalMicros,
+            layout_sample_count: var_layoutSampleCount,
+            layout_max_micros: var_layoutMaxMicros,
+            prebind_request_count: var_prebindRequestCount,
+            prebind_hit_count: var_prebindHitCount,
+            visible_prebound_bind_total_micros: var_visiblePreboundBindTotalMicros,
+            visible_prebound_bind_sample_count: var_visiblePreboundBindSampleCount,
+            visible_prebound_bind_max_micros: var_visiblePreboundBindMaxMicros,
+            visible_prebound_layout_total_micros: var_visiblePreboundLayoutTotalMicros,
+            visible_prebound_layout_sample_count: var_visiblePreboundLayoutSampleCount,
+            visible_prebound_layout_max_micros: var_visiblePreboundLayoutMaxMicros,
+            background_prebind_bind_total_micros: var_backgroundPrebindBindTotalMicros,
+            background_prebind_bind_sample_count: var_backgroundPrebindBindSampleCount,
+            background_prebind_bind_max_micros: var_backgroundPrebindBindMaxMicros,
+            background_prebind_layout_total_micros: var_backgroundPrebindLayoutTotalMicros,
+            background_prebind_layout_sample_count: var_backgroundPrebindLayoutSampleCount,
+            background_prebind_layout_max_micros: var_backgroundPrebindLayoutMaxMicros,
+        };
+    }
+}
+
+impl SseDecode for crate::api::book_file::TxtLayoutTelemetry {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_hotReadCount = <u64>::sse_decode(deserializer);
+        let mut var_hotHitCount = <u64>::sse_decode(deserializer);
+        let mut var_hotMissCount = <u64>::sse_decode(deserializer);
+        let mut var_averageJumpGapPages = <u32>::sse_decode(deserializer);
+        let mut var_maxJumpGapPages = <u32>::sse_decode(deserializer);
+        let mut var_bindSampleCount = <u64>::sse_decode(deserializer);
+        let mut var_averageBindMicros = <u64>::sse_decode(deserializer);
+        let mut var_maxBindMicros = <u64>::sse_decode(deserializer);
+        let mut var_layoutSampleCount = <u64>::sse_decode(deserializer);
+        let mut var_averageLayoutMicros = <u64>::sse_decode(deserializer);
+        let mut var_maxLayoutMicros = <u64>::sse_decode(deserializer);
+        let mut var_prebindRequestCount = <u64>::sse_decode(deserializer);
+        let mut var_prebindHitCount = <u64>::sse_decode(deserializer);
+        let mut var_visiblePreboundBindSampleCount = <u64>::sse_decode(deserializer);
+        let mut var_averageVisiblePreboundBindMicros = <u64>::sse_decode(deserializer);
+        let mut var_maxVisiblePreboundBindMicros = <u64>::sse_decode(deserializer);
+        let mut var_visiblePreboundLayoutSampleCount = <u64>::sse_decode(deserializer);
+        let mut var_averageVisiblePreboundLayoutMicros = <u64>::sse_decode(deserializer);
+        let mut var_maxVisiblePreboundLayoutMicros = <u64>::sse_decode(deserializer);
+        let mut var_backgroundPrebindBindSampleCount = <u64>::sse_decode(deserializer);
+        let mut var_averageBackgroundPrebindBindMicros = <u64>::sse_decode(deserializer);
+        let mut var_maxBackgroundPrebindBindMicros = <u64>::sse_decode(deserializer);
+        let mut var_backgroundPrebindLayoutSampleCount = <u64>::sse_decode(deserializer);
+        let mut var_averageBackgroundPrebindLayoutMicros = <u64>::sse_decode(deserializer);
+        let mut var_maxBackgroundPrebindLayoutMicros = <u64>::sse_decode(deserializer);
+        let mut var_adaptiveWindowSize = <u32>::sse_decode(deserializer);
+        let mut var_adaptiveRetentionLimit = <u32>::sse_decode(deserializer);
+        let mut var_updatedAtMillis = <Option<u64>>::sse_decode(deserializer);
+        return crate::api::book_file::TxtLayoutTelemetry {
+            hot_read_count: var_hotReadCount,
+            hot_hit_count: var_hotHitCount,
+            hot_miss_count: var_hotMissCount,
+            average_jump_gap_pages: var_averageJumpGapPages,
+            max_jump_gap_pages: var_maxJumpGapPages,
+            bind_sample_count: var_bindSampleCount,
+            average_bind_micros: var_averageBindMicros,
+            max_bind_micros: var_maxBindMicros,
+            layout_sample_count: var_layoutSampleCount,
+            average_layout_micros: var_averageLayoutMicros,
+            max_layout_micros: var_maxLayoutMicros,
+            prebind_request_count: var_prebindRequestCount,
+            prebind_hit_count: var_prebindHitCount,
+            visible_prebound_bind_sample_count: var_visiblePreboundBindSampleCount,
+            average_visible_prebound_bind_micros: var_averageVisiblePreboundBindMicros,
+            max_visible_prebound_bind_micros: var_maxVisiblePreboundBindMicros,
+            visible_prebound_layout_sample_count: var_visiblePreboundLayoutSampleCount,
+            average_visible_prebound_layout_micros: var_averageVisiblePreboundLayoutMicros,
+            max_visible_prebound_layout_micros: var_maxVisiblePreboundLayoutMicros,
+            background_prebind_bind_sample_count: var_backgroundPrebindBindSampleCount,
+            average_background_prebind_bind_micros: var_averageBackgroundPrebindBindMicros,
+            max_background_prebind_bind_micros: var_maxBackgroundPrebindBindMicros,
+            background_prebind_layout_sample_count: var_backgroundPrebindLayoutSampleCount,
+            average_background_prebind_layout_micros: var_averageBackgroundPrebindLayoutMicros,
+            max_background_prebind_layout_micros: var_maxBackgroundPrebindLayoutMicros,
+            adaptive_window_size: var_adaptiveWindowSize,
+            adaptive_retention_limit: var_adaptiveRetentionLimit,
+            updated_at_millis: var_updatedAtMillis,
+        };
+    }
+}
+
+impl SseDecode for crate::api::book_file::TxtPageBreakCache {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_basePageIndex = <u32>::sse_decode(deserializer);
+        let mut var_startOffset = <u64>::sse_decode(deserializer);
+        let mut var_pageEnds = <Vec<u64>>::sse_decode(deserializer);
+        let mut var_nextOffset = <u64>::sse_decode(deserializer);
+        let mut var_hasMore = <bool>::sse_decode(deserializer);
+        let mut var_lastPageIndex = <u32>::sse_decode(deserializer);
+        let mut var_touchedAtMillis = <Option<u64>>::sse_decode(deserializer);
+        return crate::api::book_file::TxtPageBreakCache {
+            base_page_index: var_basePageIndex,
+            start_offset: var_startOffset,
+            page_ends: var_pageEnds,
+            next_offset: var_nextOffset,
+            has_more: var_hasMore,
+            last_page_index: var_lastPageIndex,
+            touched_at_millis: var_touchedAtMillis,
+        };
+    }
+}
+
+impl SseDecode for crate::api::book_file::TxtPageCacheSelection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_cache = <crate::api::book_file::TxtPageBreakCache>::sse_decode(deserializer);
+        let mut var_usedHotWindow = <bool>::sse_decode(deserializer);
+        let mut var_restoredFirstPageIndex = <u32>::sse_decode(deserializer);
+        let mut var_restoredLastPageIndex = <u32>::sse_decode(deserializer);
+        let mut var_adaptiveWindowSize = <u32>::sse_decode(deserializer);
+        let mut var_adaptiveRetentionLimit = <u32>::sse_decode(deserializer);
+        return crate::api::book_file::TxtPageCacheSelection {
+            cache: var_cache,
+            used_hot_window: var_usedHotWindow,
+            restored_first_page_index: var_restoredFirstPageIndex,
+            restored_last_page_index: var_restoredLastPageIndex,
+            adaptive_window_size: var_adaptiveWindowSize,
+            adaptive_retention_limit: var_adaptiveRetentionLimit,
+        };
+    }
+}
+
 impl SseDecode for u16 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1222,13 +1780,6 @@ impl SseDecode for i32 {
     }
 }
 
-impl SseDecode for bool {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        deserializer.cursor.read_u8().unwrap() != 0
-    }
-}
-
 fn pde_ffi_dispatcher_primary_impl(
     func_id: i32,
     port: flutter_rust_bridge::for_generated::MessagePort,
@@ -1240,21 +1791,33 @@ fn pde_ffi_dispatcher_primary_impl(
     match func_id {
         3 => wire__crate__api__http_source__fetch_url_impl(port, ptr, rust_vec_len, data_len),
         4 => wire__crate__api__http_source__http_get_impl(port, ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__book_source__source_book_detail_impl(
+        5 => wire__crate__api__app_start__init_app_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__book_source__source_book_detail_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        19 => wire__crate__api__book_source__source_chapter_content_impl(
+        22 => wire__crate__api__book_source__source_chapter_content_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        20 => wire__crate__api__book_source__source_search_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__book_source__source_toc_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__book_source__source_search_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__book_source__source_toc_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__book_file__txt_layout_cache_default_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        26 => wire__crate__api__book_file__txt_layout_telemetry_default_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
         _ => unreachable!(),
     }
 }
@@ -1267,7 +1830,7 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        1 => wire__crate__api__simple__engine_version_impl(ptr, rust_vec_len, data_len),
+        1 => wire__crate__api__app_start__engine_version_impl(ptr, rust_vec_len, data_len),
         2 => wire__crate__api__txt_book__estimate_word_count_impl(ptr, rust_vec_len, data_len),
         6 => wire__crate__api__storage__init_storage_impl(ptr, rust_vec_len, data_len),
         7 => wire__crate__api__storage__list_bookshelf_impl(ptr, rust_vec_len, data_len),
@@ -1281,10 +1844,20 @@ fn pde_ffi_dispatcher_sync_impl(
         13 => wire__crate__api__book_file__read_book_chapter_file_impl(ptr, rust_vec_len, data_len),
         14 => wire__crate__api__txt_book__read_chapter_impl(ptr, rust_vec_len, data_len),
         15 => wire__crate__api__txt_book__read_chapter_bytes_impl(ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__storage__remove_book_impl(ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__txt_book__search_in_book_impl(ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__storage__update_progress_impl(ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__storage__upsert_book_impl(ptr, rust_vec_len, data_len),
+        16 => {
+            wire__crate__api__book_file__read_txt_layout_telemetry_impl(ptr, rust_vec_len, data_len)
+        }
+        17 => wire__crate__api__book_file__read_txt_page_cache_impl(ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__storage__remove_book_impl(ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__book_file__report_txt_layout_feedback_impl(
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        20 => wire__crate__api__txt_book__search_in_book_impl(ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__storage__update_progress_impl(ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__storage__upsert_book_impl(ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__book_file__write_txt_page_cache_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1531,11 +2104,246 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::txt_book::TxtBookMeta>
         self
     }
 }
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::book_file::TxtLayoutCache {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.chapters.into_into_dart().into_dart(),
+            self.hot_windows.into_into_dart().into_dart(),
+            self.telemetry.into_into_dart().into_dart(),
+            self.updated_at_millis.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::book_file::TxtLayoutCache
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::book_file::TxtLayoutCache>
+    for crate::api::book_file::TxtLayoutCache
+{
+    fn into_into_dart(self) -> crate::api::book_file::TxtLayoutCache {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::book_file::TxtLayoutFeedbackInput {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.target_page_index.into_into_dart().into_dart(),
+            self.restored_first_page_index.into_into_dart().into_dart(),
+            self.restored_last_page_index.into_into_dart().into_dart(),
+            self.used_hot_window.into_into_dart().into_dart(),
+            self.record_restore_event.into_into_dart().into_dart(),
+            self.bind_total_micros.into_into_dart().into_dart(),
+            self.bind_sample_count.into_into_dart().into_dart(),
+            self.bind_max_micros.into_into_dart().into_dart(),
+            self.layout_total_micros.into_into_dart().into_dart(),
+            self.layout_sample_count.into_into_dart().into_dart(),
+            self.layout_max_micros.into_into_dart().into_dart(),
+            self.prebind_request_count.into_into_dart().into_dart(),
+            self.prebind_hit_count.into_into_dart().into_dart(),
+            self.visible_prebound_bind_total_micros
+                .into_into_dart()
+                .into_dart(),
+            self.visible_prebound_bind_sample_count
+                .into_into_dart()
+                .into_dart(),
+            self.visible_prebound_bind_max_micros
+                .into_into_dart()
+                .into_dart(),
+            self.visible_prebound_layout_total_micros
+                .into_into_dart()
+                .into_dart(),
+            self.visible_prebound_layout_sample_count
+                .into_into_dart()
+                .into_dart(),
+            self.visible_prebound_layout_max_micros
+                .into_into_dart()
+                .into_dart(),
+            self.background_prebind_bind_total_micros
+                .into_into_dart()
+                .into_dart(),
+            self.background_prebind_bind_sample_count
+                .into_into_dart()
+                .into_dart(),
+            self.background_prebind_bind_max_micros
+                .into_into_dart()
+                .into_dart(),
+            self.background_prebind_layout_total_micros
+                .into_into_dart()
+                .into_dart(),
+            self.background_prebind_layout_sample_count
+                .into_into_dart()
+                .into_dart(),
+            self.background_prebind_layout_max_micros
+                .into_into_dart()
+                .into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::book_file::TxtLayoutFeedbackInput
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::book_file::TxtLayoutFeedbackInput>
+    for crate::api::book_file::TxtLayoutFeedbackInput
+{
+    fn into_into_dart(self) -> crate::api::book_file::TxtLayoutFeedbackInput {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::book_file::TxtLayoutTelemetry {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.hot_read_count.into_into_dart().into_dart(),
+            self.hot_hit_count.into_into_dart().into_dart(),
+            self.hot_miss_count.into_into_dart().into_dart(),
+            self.average_jump_gap_pages.into_into_dart().into_dart(),
+            self.max_jump_gap_pages.into_into_dart().into_dart(),
+            self.bind_sample_count.into_into_dart().into_dart(),
+            self.average_bind_micros.into_into_dart().into_dart(),
+            self.max_bind_micros.into_into_dart().into_dart(),
+            self.layout_sample_count.into_into_dart().into_dart(),
+            self.average_layout_micros.into_into_dart().into_dart(),
+            self.max_layout_micros.into_into_dart().into_dart(),
+            self.prebind_request_count.into_into_dart().into_dart(),
+            self.prebind_hit_count.into_into_dart().into_dart(),
+            self.visible_prebound_bind_sample_count
+                .into_into_dart()
+                .into_dart(),
+            self.average_visible_prebound_bind_micros
+                .into_into_dart()
+                .into_dart(),
+            self.max_visible_prebound_bind_micros
+                .into_into_dart()
+                .into_dart(),
+            self.visible_prebound_layout_sample_count
+                .into_into_dart()
+                .into_dart(),
+            self.average_visible_prebound_layout_micros
+                .into_into_dart()
+                .into_dart(),
+            self.max_visible_prebound_layout_micros
+                .into_into_dart()
+                .into_dart(),
+            self.background_prebind_bind_sample_count
+                .into_into_dart()
+                .into_dart(),
+            self.average_background_prebind_bind_micros
+                .into_into_dart()
+                .into_dart(),
+            self.max_background_prebind_bind_micros
+                .into_into_dart()
+                .into_dart(),
+            self.background_prebind_layout_sample_count
+                .into_into_dart()
+                .into_dart(),
+            self.average_background_prebind_layout_micros
+                .into_into_dart()
+                .into_dart(),
+            self.max_background_prebind_layout_micros
+                .into_into_dart()
+                .into_dart(),
+            self.adaptive_window_size.into_into_dart().into_dart(),
+            self.adaptive_retention_limit.into_into_dart().into_dart(),
+            self.updated_at_millis.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::book_file::TxtLayoutTelemetry
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::book_file::TxtLayoutTelemetry>
+    for crate::api::book_file::TxtLayoutTelemetry
+{
+    fn into_into_dart(self) -> crate::api::book_file::TxtLayoutTelemetry {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::book_file::TxtPageBreakCache {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.base_page_index.into_into_dart().into_dart(),
+            self.start_offset.into_into_dart().into_dart(),
+            self.page_ends.into_into_dart().into_dart(),
+            self.next_offset.into_into_dart().into_dart(),
+            self.has_more.into_into_dart().into_dart(),
+            self.last_page_index.into_into_dart().into_dart(),
+            self.touched_at_millis.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::book_file::TxtPageBreakCache
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::book_file::TxtPageBreakCache>
+    for crate::api::book_file::TxtPageBreakCache
+{
+    fn into_into_dart(self) -> crate::api::book_file::TxtPageBreakCache {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::book_file::TxtPageCacheSelection {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.cache.into_into_dart().into_dart(),
+            self.used_hot_window.into_into_dart().into_dart(),
+            self.restored_first_page_index.into_into_dart().into_dart(),
+            self.restored_last_page_index.into_into_dart().into_dart(),
+            self.adaptive_window_size.into_into_dart().into_dart(),
+            self.adaptive_retention_limit.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::book_file::TxtPageCacheSelection
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::book_file::TxtPageCacheSelection>
+    for crate::api::book_file::TxtPageCacheSelection
+{
+    fn into_into_dart(self) -> crate::api::book_file::TxtPageCacheSelection {
+        self
+    }
+}
 
 impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(format!("{:?}", self), serializer);
+    }
+}
+
+impl SseEncode
+    for std::collections::HashMap<String, Vec<crate::api::book_file::TxtPageBreakCache>>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<(String, Vec<crate::api::book_file::TxtPageBreakCache>)>>::sse_encode(
+            self.into_iter().collect(),
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for std::collections::HashMap<String, crate::api::book_file::TxtPageBreakCache> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<(String, crate::api::book_file::TxtPageBreakCache)>>::sse_encode(
+            self.into_iter().collect(),
+            serializer,
+        );
     }
 }
 
@@ -1599,6 +2407,13 @@ impl SseEncode for crate::api::storage::BookshelfEntry {
     }
 }
 
+impl SseEncode for bool {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_u8(self as _).unwrap();
+    }
+}
+
 impl SseEncode for crate::api::txt_book::ChapterIndex {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1655,6 +2470,16 @@ impl SseEncode for Vec<crate::api::txt_book::ChapterIndex> {
     }
 }
 
+impl SseEncode for Vec<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <u64>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<u8> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1665,12 +2490,32 @@ impl SseEncode for Vec<u8> {
     }
 }
 
+impl SseEncode for Vec<(String, Vec<crate::api::book_file::TxtPageBreakCache>)> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <(String, Vec<crate::api::book_file::TxtPageBreakCache>)>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<(String, String)> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <(String, String)>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<(String, crate::api::book_file::TxtPageBreakCache)> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <(String, crate::api::book_file::TxtPageBreakCache)>::sse_encode(item, serializer);
         }
     }
 }
@@ -1705,6 +2550,16 @@ impl SseEncode for Vec<crate::api::book_source::TocEntry> {
     }
 }
 
+impl SseEncode for Vec<crate::api::book_file::TxtPageBreakCache> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::book_file::TxtPageBreakCache>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1715,11 +2570,57 @@ impl SseEncode for Option<String> {
     }
 }
 
+impl SseEncode for Option<crate::api::book_file::TxtLayoutTelemetry> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::book_file::TxtLayoutTelemetry>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api::book_file::TxtPageCacheSelection> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::book_file::TxtPageCacheSelection>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <u64>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for (String, Vec<crate::api::book_file::TxtPageBreakCache>) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.0, serializer);
+        <Vec<crate::api::book_file::TxtPageBreakCache>>::sse_encode(self.1, serializer);
+    }
+}
+
 impl SseEncode for (String, String) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.0, serializer);
         <String>::sse_encode(self.1, serializer);
+    }
+}
+
+impl SseEncode for (String, crate::api::book_file::TxtPageBreakCache) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.0, serializer);
+        <crate::api::book_file::TxtPageBreakCache>::sse_encode(self.1, serializer);
     }
 }
 
@@ -1761,6 +2662,109 @@ impl SseEncode for crate::api::txt_book::TxtBookMeta {
     }
 }
 
+impl SseEncode for crate::api::book_file::TxtLayoutCache {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <std::collections::HashMap<String, crate::api::book_file::TxtPageBreakCache>>::sse_encode(
+            self.chapters,
+            serializer,
+        );
+        <std::collections::HashMap<String, Vec<crate::api::book_file::TxtPageBreakCache>>>::sse_encode(self.hot_windows, serializer);
+        <crate::api::book_file::TxtLayoutTelemetry>::sse_encode(self.telemetry, serializer);
+        <Option<u64>>::sse_encode(self.updated_at_millis, serializer);
+    }
+}
+
+impl SseEncode for crate::api::book_file::TxtLayoutFeedbackInput {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u32>::sse_encode(self.target_page_index, serializer);
+        <u32>::sse_encode(self.restored_first_page_index, serializer);
+        <u32>::sse_encode(self.restored_last_page_index, serializer);
+        <bool>::sse_encode(self.used_hot_window, serializer);
+        <bool>::sse_encode(self.record_restore_event, serializer);
+        <u64>::sse_encode(self.bind_total_micros, serializer);
+        <u32>::sse_encode(self.bind_sample_count, serializer);
+        <u64>::sse_encode(self.bind_max_micros, serializer);
+        <u64>::sse_encode(self.layout_total_micros, serializer);
+        <u32>::sse_encode(self.layout_sample_count, serializer);
+        <u64>::sse_encode(self.layout_max_micros, serializer);
+        <u32>::sse_encode(self.prebind_request_count, serializer);
+        <u32>::sse_encode(self.prebind_hit_count, serializer);
+        <u64>::sse_encode(self.visible_prebound_bind_total_micros, serializer);
+        <u32>::sse_encode(self.visible_prebound_bind_sample_count, serializer);
+        <u64>::sse_encode(self.visible_prebound_bind_max_micros, serializer);
+        <u64>::sse_encode(self.visible_prebound_layout_total_micros, serializer);
+        <u32>::sse_encode(self.visible_prebound_layout_sample_count, serializer);
+        <u64>::sse_encode(self.visible_prebound_layout_max_micros, serializer);
+        <u64>::sse_encode(self.background_prebind_bind_total_micros, serializer);
+        <u32>::sse_encode(self.background_prebind_bind_sample_count, serializer);
+        <u64>::sse_encode(self.background_prebind_bind_max_micros, serializer);
+        <u64>::sse_encode(self.background_prebind_layout_total_micros, serializer);
+        <u32>::sse_encode(self.background_prebind_layout_sample_count, serializer);
+        <u64>::sse_encode(self.background_prebind_layout_max_micros, serializer);
+    }
+}
+
+impl SseEncode for crate::api::book_file::TxtLayoutTelemetry {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u64>::sse_encode(self.hot_read_count, serializer);
+        <u64>::sse_encode(self.hot_hit_count, serializer);
+        <u64>::sse_encode(self.hot_miss_count, serializer);
+        <u32>::sse_encode(self.average_jump_gap_pages, serializer);
+        <u32>::sse_encode(self.max_jump_gap_pages, serializer);
+        <u64>::sse_encode(self.bind_sample_count, serializer);
+        <u64>::sse_encode(self.average_bind_micros, serializer);
+        <u64>::sse_encode(self.max_bind_micros, serializer);
+        <u64>::sse_encode(self.layout_sample_count, serializer);
+        <u64>::sse_encode(self.average_layout_micros, serializer);
+        <u64>::sse_encode(self.max_layout_micros, serializer);
+        <u64>::sse_encode(self.prebind_request_count, serializer);
+        <u64>::sse_encode(self.prebind_hit_count, serializer);
+        <u64>::sse_encode(self.visible_prebound_bind_sample_count, serializer);
+        <u64>::sse_encode(self.average_visible_prebound_bind_micros, serializer);
+        <u64>::sse_encode(self.max_visible_prebound_bind_micros, serializer);
+        <u64>::sse_encode(self.visible_prebound_layout_sample_count, serializer);
+        <u64>::sse_encode(self.average_visible_prebound_layout_micros, serializer);
+        <u64>::sse_encode(self.max_visible_prebound_layout_micros, serializer);
+        <u64>::sse_encode(self.background_prebind_bind_sample_count, serializer);
+        <u64>::sse_encode(self.average_background_prebind_bind_micros, serializer);
+        <u64>::sse_encode(self.max_background_prebind_bind_micros, serializer);
+        <u64>::sse_encode(self.background_prebind_layout_sample_count, serializer);
+        <u64>::sse_encode(self.average_background_prebind_layout_micros, serializer);
+        <u64>::sse_encode(self.max_background_prebind_layout_micros, serializer);
+        <u32>::sse_encode(self.adaptive_window_size, serializer);
+        <u32>::sse_encode(self.adaptive_retention_limit, serializer);
+        <Option<u64>>::sse_encode(self.updated_at_millis, serializer);
+    }
+}
+
+impl SseEncode for crate::api::book_file::TxtPageBreakCache {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u32>::sse_encode(self.base_page_index, serializer);
+        <u64>::sse_encode(self.start_offset, serializer);
+        <Vec<u64>>::sse_encode(self.page_ends, serializer);
+        <u64>::sse_encode(self.next_offset, serializer);
+        <bool>::sse_encode(self.has_more, serializer);
+        <u32>::sse_encode(self.last_page_index, serializer);
+        <Option<u64>>::sse_encode(self.touched_at_millis, serializer);
+    }
+}
+
+impl SseEncode for crate::api::book_file::TxtPageCacheSelection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::book_file::TxtPageBreakCache>::sse_encode(self.cache, serializer);
+        <bool>::sse_encode(self.used_hot_window, serializer);
+        <u32>::sse_encode(self.restored_first_page_index, serializer);
+        <u32>::sse_encode(self.restored_last_page_index, serializer);
+        <u32>::sse_encode(self.adaptive_window_size, serializer);
+        <u32>::sse_encode(self.adaptive_retention_limit, serializer);
+    }
+}
+
 impl SseEncode for u16 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1798,13 +2802,6 @@ impl SseEncode for i32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
-    }
-}
-
-impl SseEncode for bool {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        serializer.cursor.write_u8(self as _).unwrap();
     }
 }
 

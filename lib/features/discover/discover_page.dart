@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../services/local_books.dart';
+import '../../services/rss_source.dart';
 import '../../services/source_recommendations.dart';
 import '../../src/rust/api/book_source.dart' as bs;
 import '../../src/rust/api/storage.dart' as rs;
@@ -22,6 +23,8 @@ class DiscoverPage extends ConsumerStatefulWidget {
 
 class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   static const _recommendations = SourceRecommendationsService();
+  static const _rss = RssSourceService();
+  static const _sourceRequestTimeout = Duration(seconds: 8);
 
   final _controller = TextEditingController();
   List<bs.SearchResult> _results = const [];
@@ -59,7 +62,14 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     });
     final sources = ref.read(sourcesProvider).where((s) => s.enabled).toList();
     try {
-      final all = await _searchSources(sources, keyword);
+      final all = await _searchSources(
+        sources,
+        keyword,
+        onProgress: (partial) {
+          if (!mounted || requestToken != _requestToken) return;
+          setState(() => _results = partial);
+        },
+      );
       if (!mounted || requestToken != _requestToken) return;
       setState(() => _results = all);
     } catch (e) {
@@ -126,7 +136,20 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   String _recommendationSignature(List<BookSourceModel> sources) {
     return sources
         .where((item) => item.enabled)
-        .map((item) => '${item.name}|${item.url}|${item.searchUrl}')
+        .map(
+          (item) => [
+            item.name,
+            item.url,
+            item.searchUrl,
+            item.searchList,
+            item.enabledExplore.toString(),
+            item.exploreUrl,
+            item.exploreList,
+            item.rssArticles,
+            item.rssLink,
+            item.rssContent,
+          ].join('|'),
+        )
         .join('||');
   }
 
@@ -155,9 +178,11 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
 
   Future<List<bs.SearchResult>> _searchSources(
     List<BookSourceModel> sources,
-    String keyword,
-  ) async {
-    const concurrency = 4;
+    String keyword, {
+    ValueChanged<List<bs.SearchResult>>? onProgress,
+  }) async {
+    const concurrency = 6;
+    final prefs = ref.read(sharedPreferencesProvider);
     final results = <bs.SearchResult>[];
     final seen = <String>{};
     for (var start = 0; start < sources.length; start += concurrency) {
@@ -166,10 +191,17 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       final lists = await Future.wait(
         batch.map((src) async {
           try {
-            return await bs.sourceSearch(
-              sourceJson: src.toJsonString(),
-              keyword: keyword,
-            );
+            if (src.isRssSource) {
+              return await _rss.loadItems(
+                prefs,
+                source: src,
+                maxItems: 12,
+                keyword: keyword,
+              );
+            }
+            return await bs
+                .sourceSearch(sourceJson: src.toJsonString(), keyword: keyword)
+                .timeout(_sourceRequestTimeout);
           } catch (_) {
             return const <bs.SearchResult>[];
           }
@@ -185,6 +217,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
           }
         }
       }
+      onProgress?.call(List<bs.SearchResult>.unmodifiable(results));
       if (end < sources.length) {
         await Future<void>.delayed(Duration.zero);
       }
@@ -201,6 +234,49 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       final source = ref
           .read(sourcesProvider)
           .firstWhere((item) => item.name == result.sourceName);
+      if (RssSourceService.isSyntheticBookUrl(result.bookUrl)) {
+        final prefs = ref.read(sharedPreferencesProvider);
+        final cached = await _rss.ensureEntry(
+          prefs,
+          source: source,
+          syntheticUrl: result.bookUrl,
+          fallbackTitle: result.name,
+        );
+        final entry = rs.BookshelfEntry(
+          id: 'online:${result.bookUrl}',
+          title: cached?.title.trim().isNotEmpty == true
+              ? cached!.title
+              : result.name,
+          author: cached?.author.trim().isNotEmpty == true
+              ? cached!.author
+              : result.author,
+          kind: 'online',
+          pathOrUrl: result.bookUrl,
+          bookMetaJson: null,
+          cover: cached?.coverUrl.trim().isNotEmpty == true
+              ? cached!.coverUrl
+              : result.coverUrl,
+          lastChapter: 0,
+          lastOffset: BigInt.zero,
+          updatedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          sourceName: result.sourceName,
+          sourceJson: source.toJsonString(),
+          tocUrl: cached?.link.trim().isNotEmpty == true
+              ? cached!.link
+              : result.bookUrl,
+        );
+        await ref.read(bookshelfProvider.notifier).upsert(entry);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '${AppLocalizations.of(context).imported}: ${entry.title}',
+              ),
+            ),
+          );
+        }
+        return;
+      }
       final sourceJson = source.toJsonString();
       final detail = await bs.sourceBookDetail(
         sourceJson: sourceJson,
@@ -268,10 +344,68 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
     final sources = ref.watch(sourcesProvider).where((s) => s.enabled).toList();
     _ensureRecommendations(sources);
     final showingSearch = _controller.text.trim().isNotEmpty;
     final items = showingSearch ? _results : _recommended;
+    final body = sources.isEmpty
+        ? KeyedSubtree(
+            key: const ValueKey('discover-no-sources'),
+            child: Center(
+              child: Text(
+                l10n.noSourcesSub,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            ),
+          )
+        : _loading && items.isEmpty
+        ? const _DiscoverSkeletonList(key: ValueKey('discover-loading'))
+        : _error != null
+        ? KeyedSubtree(
+            key: const ValueKey('discover-error'),
+            child: Center(child: Text(_error!)),
+          )
+        : items.isEmpty
+        ? KeyedSubtree(
+            key: ValueKey('discover-empty-$showingSearch'),
+            child: Center(
+              child: Text(
+                showingSearch ? l10n.noResults : l10n.noRecommendations,
+                style: Theme.of(context).textTheme.bodyLarge,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          )
+        : RefreshIndicator(
+            key: ValueKey('discover-results-$showingSearch-${items.length}'),
+            onRefresh: showingSearch
+                ? _search
+                : () => _loadRecommendations(sources),
+            child: ListView.separated(
+              itemCount: items.length + 1,
+              separatorBuilder: (context, index) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return ListTile(
+                    title: Text(
+                      showingSearch ? l10n.searchHint : l10n.recommendedBooks,
+                    ),
+                    subtitle: showingSearch
+                        ? null
+                        : Text(l10n.discoverAutoRecommendations),
+                  );
+                }
+                final result = items[index - 1];
+                return _AnimatedSearchResultTile(
+                  index: index,
+                  result: result,
+                  onTap: () => _addOnlineBook(result),
+                );
+              },
+            ),
+          );
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.discover),
@@ -285,7 +419,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
                   )
                 : const Icon(Icons.refresh),
           ),
@@ -317,55 +451,213 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
           ),
         ),
       ),
-      body: sources.isEmpty
-          ? Center(
-              child: Text(
-                l10n.noSourcesSub,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-            )
-          : _loading && items.isEmpty
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(child: Text(_error!))
-          : items.isEmpty
-          ? Center(
-              child: Text(
-                showingSearch ? l10n.noResults : l10n.noRecommendations,
-                style: Theme.of(context).textTheme.bodyLarge,
-                textAlign: TextAlign.center,
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: showingSearch
-                  ? _search
-                  : () => _loadRecommendations(sources),
-              child: ListView.separated(
-                itemCount: items.length + 1,
-                separatorBuilder: (context, index) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  if (index == 0) {
-                    return ListTile(
-                      title: Text(
-                        showingSearch ? l10n.searchHint : l10n.recommendedBooks,
-                      ),
-                      subtitle: showingSearch
-                          ? null
-                          : Text(l10n.discoverAutoRecommendations),
-                    );
-                  }
-                  final result = items[index - 1];
-                  return ListTile(
-                    leading: _SearchResultCover(url: result.coverUrl),
-                    title: Text(result.name),
-                    subtitle: Text('${result.author} · ${result.sourceName}'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _addOnlineBook(result),
-                  );
-                },
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              reverseDuration: const Duration(milliseconds: 180),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                final curved = CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                  reverseCurve: Curves.easeInCubic,
+                );
+                return FadeTransition(
+                  opacity: curved,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, 0.025),
+                      end: Offset.zero,
+                    ).animate(curved),
+                    child: child,
+                  ),
+                );
+              },
+              child: body,
+            ),
+          ),
+          if (_loading && items.isNotEmpty)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: LinearProgressIndicator(
+                minHeight: 2.5,
+                color: colorScheme.primary,
+                backgroundColor: colorScheme.surfaceContainerHighest,
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnimatedSearchResultTile extends StatelessWidget {
+  final int index;
+  final bs.SearchResult result;
+  final VoidCallback onTap;
+
+  const _AnimatedSearchResultTile({
+    required this.index,
+    required this.result,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final delay = Duration(milliseconds: (index.clamp(0, 8) * 28).toInt());
+    return TweenAnimationBuilder<double>(
+      key: ValueKey(
+        result.bookUrl.isEmpty
+            ? '${result.sourceName}-${result.name}-${result.author}'
+            : result.bookUrl,
+      ),
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 260 + delay.inMilliseconds),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 12 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: ListTile(
+        leading: _SearchResultCover(url: result.coverUrl),
+        title: Text(result.name),
+        subtitle: Text('${result.author} · ${result.sourceName}'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _DiscoverSkeletonList extends StatefulWidget {
+  const _DiscoverSkeletonList({super.key});
+
+  @override
+  State<_DiscoverSkeletonList> createState() => _DiscoverSkeletonListState();
+}
+
+class _DiscoverSkeletonListState extends State<_DiscoverSkeletonList>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1300),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.only(top: 8, bottom: 24),
+      itemCount: 8,
+      separatorBuilder: (context, index) => const Divider(height: 1),
+      itemBuilder: (context, index) =>
+          _SkeletonTile(animation: _controller, compact: index == 0),
+    );
+  }
+}
+
+class _SkeletonTile extends StatelessWidget {
+  final Animation<double> animation;
+  final bool compact;
+
+  const _SkeletonTile({required this.animation, required this.compact});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final alpha = 0.34 + animation.value * 0.28;
+        final base = colorScheme.surfaceContainerHighest.withValues(
+          alpha: alpha,
+        );
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            compact ? 12 : 10,
+            16,
+            compact ? 12 : 10,
+          ),
+          child: Row(
+            children: [
+              _SkeletonBlock(
+                width: compact ? 36 : 42,
+                height: compact ? 36 : 56,
+                radius: compact ? 18 : 8,
+                color: base,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SkeletonBlock(
+                      width: double.infinity,
+                      height: compact ? 16 : 18,
+                      radius: 999,
+                      color: base,
+                    ),
+                    const SizedBox(height: 10),
+                    FractionallySizedBox(
+                      widthFactor: compact ? 0.46 : 0.68,
+                      child: _SkeletonBlock(
+                        width: double.infinity,
+                        height: 14,
+                        radius: 999,
+                        color: base,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SkeletonBlock extends StatelessWidget {
+  final double width;
+  final double height;
+  final double radius;
+  final Color color;
+
+  const _SkeletonBlock({
+    required this.width,
+    required this.height,
+    required this.radius,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: height,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(radius),
+        ),
+      ),
     );
   }
 }

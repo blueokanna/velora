@@ -30,6 +30,7 @@ dependencies:
   path_provider: ^2.1.5
 
   file_picker: ^11.0.2
+  mobile_scanner: ^5.2.3
   permission_handler: ^12.0.1
   http: ^1.4.0
   share_plus: ^10.1.4
@@ -37,6 +38,8 @@ dependencies:
 
   collection: ^1.18.0
   intl: ^0.20.1
+  charset: ^2.0.1
+  xml: ^6.5.0
 
 dev_dependencies:
   flutter_test:

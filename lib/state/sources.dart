@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
+import 'package:charset/charset.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/retry.dart';
@@ -14,6 +15,16 @@ class BookSourceModel {
   final String name;
   final String url;
   final bool enabled;
+  final int bookSourceType;
+  final String sourceGroup;
+  final String sourceIcon;
+  final bool enabledExplore;
+  final String exploreUrl;
+  final String exploreList;
+  final String exploreName;
+  final String exploreAuthor;
+  final String exploreBookUrl;
+  final String exploreCover;
   final String searchUrl;
   final String searchList;
   final String searchName;
@@ -29,11 +40,28 @@ class BookSourceModel {
   final String tocName;
   final String tocUrl;
   final String contentSelector;
+  final String rssArticles;
+  final String rssTitle;
+  final String rssPubDate;
+  final String rssDescription;
+  final String rssImage;
+  final String rssLink;
+  final String rssContent;
 
   const BookSourceModel({
     required this.name,
     required this.url,
     this.enabled = true,
+    this.bookSourceType = 0,
+    this.sourceGroup = '',
+    this.sourceIcon = '',
+    this.enabledExplore = false,
+    this.exploreUrl = '',
+    this.exploreList = '',
+    this.exploreName = '',
+    this.exploreAuthor = '',
+    this.exploreBookUrl = '',
+    this.exploreCover = '',
     required this.searchUrl,
     required this.searchList,
     required this.searchName,
@@ -49,12 +77,103 @@ class BookSourceModel {
     required this.tocName,
     required this.tocUrl,
     required this.contentSelector,
+    this.rssArticles = '',
+    this.rssTitle = '',
+    this.rssPubDate = '',
+    this.rssDescription = '',
+    this.rssImage = '',
+    this.rssLink = '',
+    this.rssContent = '',
   });
+
+  bool get isRssSource {
+    if (rssArticles.trim().isNotEmpty ||
+        rssTitle.trim().isNotEmpty ||
+        rssPubDate.trim().isNotEmpty ||
+        rssDescription.trim().isNotEmpty ||
+        rssImage.trim().isNotEmpty ||
+        rssLink.trim().isNotEmpty ||
+        rssContent.trim().isNotEmpty) {
+      return true;
+    }
+    return url.trim().isNotEmpty &&
+        searchUrl.trim().isEmpty &&
+        searchList.trim().isEmpty &&
+        searchBookUrl.trim().isEmpty &&
+        bookInfoName.trim().isEmpty &&
+        bookInfoTocUrl.trim().isEmpty &&
+        tocList.trim().isEmpty &&
+        contentSelector.trim().isEmpty;
+  }
+
+  bool get supportsExploreRecommendations {
+    return enabledExplore &&
+        exploreUrl.trim().isNotEmpty &&
+        exploreList.trim().isNotEmpty &&
+        exploreName.trim().isNotEmpty &&
+        exploreBookUrl.trim().isNotEmpty;
+  }
+
+  List<String> get exploreEntryUrls =>
+      _parseExploreEntryUrls(exploreUrl, baseUrl: url);
+
+  BookSourceModel? toExploreSearchSource(String exploreEntryUrl) {
+    if (!supportsExploreRecommendations) return null;
+    final resolvedUrl = _resolveExploreEntryUrl(exploreEntryUrl, baseUrl: url);
+    if (resolvedUrl.isEmpty) return null;
+    return BookSourceModel(
+      name: name,
+      url: url,
+      enabled: enabled,
+      bookSourceType: bookSourceType,
+      sourceGroup: sourceGroup,
+      sourceIcon: sourceIcon,
+      enabledExplore: enabledExplore,
+      exploreUrl: exploreUrl,
+      exploreList: exploreList,
+      exploreName: exploreName,
+      exploreAuthor: exploreAuthor,
+      exploreBookUrl: exploreBookUrl,
+      exploreCover: exploreCover,
+      searchUrl: resolvedUrl,
+      searchList: exploreList,
+      searchName: exploreName,
+      searchAuthor: exploreAuthor,
+      searchBookUrl: exploreBookUrl,
+      searchCover: exploreCover,
+      bookInfoName: bookInfoName,
+      bookInfoAuthor: bookInfoAuthor,
+      bookInfoIntro: bookInfoIntro,
+      bookInfoCover: bookInfoCover,
+      bookInfoTocUrl: bookInfoTocUrl,
+      tocList: tocList,
+      tocName: tocName,
+      tocUrl: tocUrl,
+      contentSelector: contentSelector,
+      rssArticles: rssArticles,
+      rssTitle: rssTitle,
+      rssPubDate: rssPubDate,
+      rssDescription: rssDescription,
+      rssImage: rssImage,
+      rssLink: rssLink,
+      rssContent: rssContent,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'name': name,
     'url': url,
     'enabled': enabled,
+    'book_source_type': bookSourceType,
+    'source_group': sourceGroup,
+    'source_icon': sourceIcon,
+    'enabled_explore': enabledExplore,
+    'explore_url': exploreUrl,
+    'explore_list': exploreList,
+    'explore_name': exploreName,
+    'explore_author': exploreAuthor,
+    'explore_book_url': exploreBookUrl,
+    'explore_cover': exploreCover,
     'search_url': searchUrl,
     'search_list': searchList,
     'search_name': searchName,
@@ -70,19 +189,73 @@ class BookSourceModel {
     'toc_name': tocName,
     'toc_url': tocUrl,
     'content_selector': contentSelector,
+    'rss_articles': rssArticles,
+    'rss_title': rssTitle,
+    'rss_pub_date': rssPubDate,
+    'rss_description': rssDescription,
+    'rss_image': rssImage,
+    'rss_link': rssLink,
+    'rss_content': rssContent,
   };
 
   String toJsonString() => jsonEncode(toJson());
 
   factory BookSourceModel.fromJson(Map<String, dynamic> j) {
+    final isRssPayload = _looksLikeRssSource(j);
     final searchRules = _mapField(j, 'ruleSearch');
     final infoRules = _mapField(j, 'ruleBookInfo');
     final tocRules = _mapField(j, 'ruleToc');
-    final contentRules = _mapField(j, 'ruleContent');
+    final exploreRules = _mapField(j, 'ruleExplore');
+    final contentRules = isRssPayload
+        ? const <String, dynamic>{}
+        : _mapField(j, 'ruleContent');
+    final rssContentRules = isRssPayload
+        ? _mapField(j, 'ruleContent')
+        : const <String, dynamic>{};
     return BookSourceModel(
       name: _stringField(j, ['name', 'bookSourceName', 'sourceName']),
       url: _stringField(j, ['url', 'bookSourceUrl', 'sourceUrl']),
       enabled: _boolField(j, ['enabled', 'enable'], fallback: true),
+      bookSourceType: _intField(j, [
+        'book_source_type',
+        'bookSourceType',
+      ], fallback: 0),
+      sourceGroup: _stringField(j, [
+        'source_group',
+        'bookSourceGroup',
+        'sourceGroup',
+      ]),
+      sourceIcon: _stringField(j, ['source_icon', 'sourceIcon']),
+      enabledExplore: _boolField(j, [
+        'enabled_explore',
+        'enabledExplore',
+      ], fallback: false),
+      exploreUrl: _stringField(j, ['explore_url', 'exploreUrl']),
+      exploreList: _stringField(
+        j,
+        ['explore_list'],
+        exploreRules,
+        ['bookList'],
+      ),
+      exploreName: _stringField(j, ['explore_name'], exploreRules, ['name']),
+      exploreAuthor: _stringField(
+        j,
+        ['explore_author'],
+        exploreRules,
+        ['author'],
+      ),
+      exploreBookUrl: _stringField(
+        j,
+        ['explore_book_url'],
+        exploreRules,
+        ['bookUrl', 'url'],
+      ),
+      exploreCover: _stringField(
+        j,
+        ['explore_cover'],
+        exploreRules,
+        ['coverUrl', 'cover'],
+      ),
       searchUrl: _stringField(j, ['search_url', 'searchUrl']),
       searchList: _stringField(j, ['search_list'], searchRules, ['bookList']),
       searchName: _stringField(j, ['search_name'], searchRules, ['name']),
@@ -128,6 +301,18 @@ class BookSourceModel {
         contentRules,
         ['content'],
       ),
+      rssArticles: _stringField(j, ['rss_articles', 'ruleArticles']),
+      rssTitle: _stringField(j, ['rss_title', 'ruleTitle']),
+      rssPubDate: _stringField(j, ['rss_pub_date', 'rulePubDate']),
+      rssDescription: _stringField(j, ['rss_description', 'ruleDescription']),
+      rssImage: _stringField(j, ['rss_image', 'ruleImage']),
+      rssLink: _stringField(j, ['rss_link', 'ruleLink']),
+      rssContent: _stringField(
+        j,
+        ['rss_content'],
+        rssContentRules,
+        ['content'],
+      ),
     );
   }
 
@@ -135,6 +320,16 @@ class BookSourceModel {
     name: name,
     url: url,
     enabled: enabled ?? this.enabled,
+    bookSourceType: bookSourceType,
+    sourceGroup: sourceGroup,
+    sourceIcon: sourceIcon,
+    enabledExplore: enabledExplore,
+    exploreUrl: exploreUrl,
+    exploreList: exploreList,
+    exploreName: exploreName,
+    exploreAuthor: exploreAuthor,
+    exploreBookUrl: exploreBookUrl,
+    exploreCover: exploreCover,
     searchUrl: searchUrl,
     searchList: searchList,
     searchName: searchName,
@@ -150,7 +345,28 @@ class BookSourceModel {
     tocName: tocName,
     tocUrl: tocUrl,
     contentSelector: contentSelector,
+    rssArticles: rssArticles,
+    rssTitle: rssTitle,
+    rssPubDate: rssPubDate,
+    rssDescription: rssDescription,
+    rssImage: rssImage,
+    rssLink: rssLink,
+    rssContent: rssContent,
   );
+}
+
+BookSourceModel? decodeBookSourceModelJson(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is Map<String, dynamic>) {
+      return BookSourceModel.fromJson(decoded);
+    }
+    if (decoded is Map) {
+      return BookSourceModel.fromJson(decoded.cast<String, dynamic>());
+    }
+  } catch (_) {}
+  return null;
 }
 
 enum SourceImportStage {
@@ -504,6 +720,135 @@ bool _boolField(
   return fallback;
 }
 
+int _intField(
+  Map<String, dynamic> raw,
+  List<String> keys, {
+  required int fallback,
+}) {
+  for (final key in keys) {
+    final value = raw[key];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) {
+      final parsed = int.tryParse(value.trim());
+      if (parsed != null) return parsed;
+    }
+  }
+  return fallback;
+}
+
+bool _looksLikeRssSource(Map<String, dynamic> raw) {
+  if (raw.containsKey('ruleArticles') ||
+      raw.containsKey('ruleTitle') ||
+      raw.containsKey('rulePubDate') ||
+      raw.containsKey('ruleDescription') ||
+      raw.containsKey('ruleImage') ||
+      raw.containsKey('ruleLink')) {
+    return true;
+  }
+  return raw.containsKey('sourceUrl') &&
+      !raw.containsKey('ruleSearch') &&
+      !raw.containsKey('ruleBookInfo') &&
+      !raw.containsKey('ruleToc');
+}
+
+List<String> _parseExploreEntryUrls(String raw, {required String baseUrl}) {
+  final jsonEntries = _parseExploreEntryUrlsFromJson(raw, baseUrl: baseUrl);
+  if (jsonEntries.isNotEmpty) {
+    return jsonEntries;
+  }
+  final entries = <String>[];
+  for (final line in raw.split(RegExp(r'[\r\n]+'))) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) continue;
+    final parts = trimmed.split('::');
+    final urlPart = parts.length >= 2 ? parts.sublist(1).join('::') : trimmed;
+    final resolved = _resolveExploreEntryUrl(urlPart, baseUrl: baseUrl);
+    if (resolved.isNotEmpty && !entries.contains(resolved)) {
+      entries.add(resolved);
+    }
+  }
+  return entries;
+}
+
+List<String> _parseExploreEntryUrlsFromJson(
+  String raw, {
+  required String baseUrl,
+}) {
+  final trimmed = raw.trim();
+  if (!(trimmed.startsWith('[') || trimmed.startsWith('{'))) {
+    return const [];
+  }
+  try {
+    final decoded = jsonDecode(trimmed);
+    final entries = <String>[];
+
+    void collectFrom(dynamic value) {
+      if (value is List) {
+        for (final item in value) {
+          collectFrom(item);
+        }
+        return;
+      }
+      if (value is! Map) {
+        return;
+      }
+      final map = _castMap(value.cast<dynamic, dynamic>());
+      final nested =
+          map['data'] ??
+          map['items'] ??
+          map['tabs'] ??
+          map['children'] ??
+          map['list'];
+      if (nested is List) {
+        collectFrom(nested);
+      }
+      final rawUrl = [map['url'], map['exploreUrl'], map['link'], map['path']]
+          .firstWhere(
+            (candidate) =>
+                candidate != null && candidate.toString().trim().isNotEmpty,
+            orElse: () => null,
+          );
+      if (rawUrl == null) {
+        return;
+      }
+      final resolved = _resolveExploreEntryUrl(
+        rawUrl.toString(),
+        baseUrl: baseUrl,
+      );
+      if (resolved.isNotEmpty && !entries.contains(resolved)) {
+        entries.add(resolved);
+      }
+    }
+
+    collectFrom(decoded);
+    return entries;
+  } catch (_) {
+    return const [];
+  }
+}
+
+String _resolveExploreEntryUrl(String raw, {required String baseUrl}) {
+  var value = raw.trim();
+  if (value.isEmpty) return '';
+  for (final placeholder in const [
+    '{{page}}',
+    '{page}',
+    '{{pageNo}}',
+    '{pageNo}',
+  ]) {
+    value = value.replaceAll(placeholder, '1');
+  }
+  final base = Uri.tryParse(baseUrl);
+  if (base != null) {
+    final joined = base.resolve(value).toString();
+    if (joined.isNotEmpty) {
+      return joined;
+    }
+  }
+  return value;
+}
+
 Future<List<String>> _readImportPayloads(
   String input, {
   SourceImportProgressCallback? onProgress,
@@ -604,6 +949,16 @@ List<String> extractSourceImportUrls(String input) {
   if (onlineImport != null) {
     urls.add(onlineImport);
   }
+  final onlineImportLinks = RegExp(
+    r'''yuedu://[^\s"'<>]+''',
+    caseSensitive: false,
+  ).allMatches(input);
+  for (final match in onlineImportLinks) {
+    final decoded = decodeSourceImportUrl(match.group(0)!);
+    if (decoded != null) {
+      urls.add(decoded);
+    }
+  }
   final contentLinks = RegExp(
     r'''https?://www\.yckceo\.com/yuedu/shuyuans/content/id/(\d+)\.html''',
     caseSensitive: false,
@@ -614,20 +969,40 @@ List<String> extractSourceImportUrls(String input) {
   }
   final rawUrls = RegExp(r"""https?://[^\s"'<>]+""").allMatches(input);
   for (final match in rawUrls) {
-    urls.add(match.group(0)!);
+    final normalized = normalizeSourceImportUrl(match.group(0)!);
+    if (normalized != null) {
+      urls.add(normalized);
+    }
   }
   return urls.toList(growable: false);
 }
 
+String? normalizeSourceImportUrl(String? input) {
+  if (input == null) return null;
+  var value = input.trim();
+  if (value.isEmpty) return null;
+  value = value.replaceAll('&amp;', '&');
+  while (value.isNotEmpty && '),;]}'.contains(value[value.length - 1])) {
+    value = value.substring(0, value.length - 1).trimRight();
+  }
+  return value.isEmpty ? null : value;
+}
+
 String? decodeSourceImportUrl(String input) {
-  final uri = Uri.tryParse(input);
-  if (uri == null) return null;
-  final value =
-      uri.queryParameters['src'] ??
-      uri.queryParameters['url'] ??
-      uri.queryParameters['source'];
-  if (value == null || value.trim().isEmpty) return null;
-  return Uri.decodeFull(value.trim());
+  try {
+    final uri = Uri.tryParse(input);
+    if (uri == null) return null;
+    final value =
+        uri.queryParameters['src'] ??
+        uri.queryParameters['url'] ??
+        uri.queryParameters['source'];
+    if (value == null || value.trim().isEmpty) return null;
+    return normalizeSourceImportUrl(Uri.decodeFull(value.trim()));
+  } on FormatException {
+    return null;
+  } on ArgumentError {
+    return null;
+  }
 }
 
 Future<List<String>> _fetchImportPayloads(
@@ -700,10 +1075,157 @@ Future<String> _requestImportBody(String url) async {
     if (response.statusCode < 200 || response.statusCode >= 400) {
       throw StateError('HTTP ${response.statusCode}');
     }
-    return utf8.decode(response.bodyBytes).trim();
+    return decodeImportResponseBody(
+      response.bodyBytes,
+      contentType: response.headers['content-type'],
+    ).trim();
   } finally {
     client.close();
   }
+}
+
+String decodeImportResponseBody(List<int> bodyBytes, {String? contentType}) {
+  if (bodyBytes.isEmpty) {
+    return '';
+  }
+  final decodedUtf8 = _tryDecodeDartEncoding(utf8, bodyBytes);
+  if (decodedUtf8 != null &&
+      (_looksLikeImportPayload(decodedUtf8) ||
+          _looksLikeImportHtml(decodedUtf8))) {
+    return decodedUtf8.trim();
+  }
+  final candidates = <Encoding>[];
+  final seen = <String>{};
+  void push(Encoding? encoding) {
+    if (encoding == null) return;
+    final key = encoding.name.toLowerCase();
+    if (seen.add(key)) {
+      candidates.add(encoding);
+    }
+  }
+
+  final declaredCharset = _extractDeclaredCharset(contentType);
+  push(declaredCharset == null ? null : Charset.getByName(declaredCharset));
+  push(utf8);
+  if (_hasUtf16Bom(bodyBytes)) {
+    push(Charset.getByName('utf-16'));
+  }
+  push(Charset.getByName('gb18030'));
+  push(Charset.getByName('gbk'));
+  push(Charset.getByName('gb2312'));
+  push(latin1);
+  push(
+    Charset.detect(
+      bodyBytes,
+      defaultEncoding: utf8,
+      orders: [utf8, Charset.getByName('gbk') ?? utf8],
+    ),
+  );
+
+  String? bestText;
+  var bestScore = -1 << 30;
+  for (final encoding in candidates) {
+    final decoded = _tryDecodeCharsetEncoding(encoding, bodyBytes);
+    if (decoded == null) {
+      continue;
+    }
+    final score = _scoreDecodedImportText(decoded, encoding.name);
+    if (score > bestScore) {
+      bestScore = score;
+      bestText = decoded;
+    }
+  }
+  return (bestText ?? utf8.decode(bodyBytes, allowMalformed: true)).trim();
+}
+
+String? _tryDecodeDartEncoding(Encoding encoding, List<int> bodyBytes) {
+  try {
+    return encoding.decode(bodyBytes);
+  } on FormatException catch (_) {
+    return null;
+  }
+}
+
+String? _tryDecodeCharsetEncoding(Encoding encoding, List<int> bodyBytes) {
+  try {
+    return encoding.decode(bodyBytes);
+  } on FormatException catch (_) {
+    return null;
+  } on ArgumentError catch (_) {
+    return null;
+  }
+}
+
+String? _extractDeclaredCharset(String? contentType) {
+  if (contentType == null || contentType.isEmpty) {
+    return null;
+  }
+  final match = RegExp(
+    "charset\\s*=\\s*['\\\"]?([^;'\\\"]+)",
+    caseSensitive: false,
+  ).firstMatch(contentType);
+  if (match == null) {
+    return null;
+  }
+  return match.group(1)?.trim();
+}
+
+int _scoreDecodedImportText(String text, String encodingName) {
+  var score = 0;
+  final trimmed = text.trimLeft();
+  if (_looksLikeImportPayload(text)) {
+    score += 6000;
+  } else if (_looksLikeImportHtml(text)) {
+    score += 2400;
+  } else if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    score += 1200;
+  }
+  final replacementCount = '�'.allMatches(text).length;
+  final cjkCount = RegExp(r'[\u2E80-\u9FFF]').allMatches(text).length;
+  final suspiciousLatin = RegExp(r'[\u00C0-\u024F]').allMatches(text).length;
+  score -= replacementCount * 160;
+  score += cjkCount * 10;
+  if (cjkCount == 0 && suspiciousLatin > 24) {
+    score -= suspiciousLatin * 12;
+  }
+  if (encodingName.toLowerCase().contains('1252') && cjkCount > 0) {
+    score -= 600;
+  }
+  score += text.length.clamp(0, 2000);
+  return score;
+}
+
+bool _hasUtf16Bom(List<int> bodyBytes) {
+  return bodyBytes.length >= 2 &&
+      ((bodyBytes[0] == 0xFF && bodyBytes[1] == 0xFE) ||
+          (bodyBytes[0] == 0xFE && bodyBytes[1] == 0xFF));
+}
+
+bool _looksLikeImportPayload(String text) {
+  final candidate = _extractJsonCandidate(text).trim();
+  if (!(candidate.startsWith('{') || candidate.startsWith('['))) {
+    return false;
+  }
+  try {
+    final decoded = jsonDecode(candidate);
+    if (decoded is List) {
+      return decoded.isNotEmpty;
+    }
+    if (decoded is Map) {
+      return decoded.isNotEmpty;
+    }
+  } catch (_) {
+    return false;
+  }
+  return false;
+}
+
+bool _looksLikeImportHtml(String text) {
+  final lower = text.toLowerCase();
+  return lower.contains('<html') ||
+      lower.contains('yuedu://booksource/importonline') ||
+      lower.contains('/yuedu/shuyuans/json/id/') ||
+      lower.contains('<script');
 }
 
 String _extractJsonCandidate(String payload) {

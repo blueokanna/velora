@@ -5,5 +5,5 @@ pub fn init_app() {
 
 #[flutter_rust_bridge::frb(sync)]
 pub fn engine_version() -> String {
-    "velora-engine 1.0.0".to_string()
+    "Velora-engine 1.0.0".to_string()
 }
