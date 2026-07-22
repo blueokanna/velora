@@ -15,6 +15,7 @@ import '../../l10n/app_localizations.dart';
 import '../../services/document_file.dart';
 import '../../services/local_books.dart' as local_books;
 import '../../services/rss_source.dart';
+import '../../services/source_adapter.dart';
 import '../../src/rust/api/book_file.dart' as book_file;
 import '../../src/rust/api/book_source.dart' as bs;
 import '../../src/rust/api/storage.dart' as rs;
@@ -121,6 +122,7 @@ class _PendingRestoreFeedback {
 
 class _ReaderPageState extends ConsumerState<ReaderPage> {
   static const _rss = RssSourceService();
+  static const _sourceAdapter = SourceAdapterService();
 
   rs.BookshelfEntry? _book;
   List<_ReaderChapter> _chapters = const [];
@@ -138,6 +140,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   final GlobalKey<PageTurnViewState> _viewKey = GlobalKey<PageTurnViewState>();
   final LinkedHashMap<int, _ReaderChapterCache> _chapterCache = LinkedHashMap();
   final Set<int> _prefetchingChapters = <int>{};
+  final Set<String> _activeSourceRequests = <String>{};
   final List<_PendingRestoreFeedback> _pendingRestoreFeedback =
       <_PendingRestoreFeedback>[];
   Timer? _saveTimer;
@@ -157,6 +160,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _cancelOnlineRequests();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
@@ -285,7 +289,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         tocUrl.isEmpty) {
       throw StateError('在线书籍缺少书源或目录地址');
     }
-    final toc = await bs.sourceToc(sourceJson: sourceJson, tocUrl: tocUrl);
+    final requestId = _sourceAdapter.createRequestId('toc');
+    final toc = await _trackOnlineRequest(
+      requestId,
+      () => _sourceAdapter.toc(sourceJson, tocUrl, requestId: requestId),
+    );
     final chapters = toc.map(_ReaderChapter.fromOnline).toList(growable: false);
     if (chapters.isEmpty) throw StateError('目录为空');
     if (!mounted) return;
@@ -476,7 +484,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
           url.isEmpty) {
         throw StateError('章节缺少在线地址');
       }
-      return bs.sourceChapterContent(sourceJson: sourceJson, chapterUrl: url);
+      final requestId = _sourceAdapter.createRequestId('content');
+      return _trackOnlineRequest(
+        requestId,
+        () => _sourceAdapter.chapterContent(
+          sourceJson,
+          url,
+          requestId: requestId,
+        ),
+      );
     }
     if (_isDocumentUriBook(book)) {
       throw StateError('无法建立本地阅读缓存');
@@ -733,7 +749,31 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   Future<void> _gotoChapter(int index, {int initialPageIndex = 0}) async {
     if (index < 0 || index >= _chapters.length) return;
-    await _loadChapter(index, initialPageIndex: initialPageIndex);
+    _cancelOnlineRequests();
+    try {
+      await _loadChapter(index, initialPageIndex: initialPageIndex);
+    } on SourceRequestFailure catch (error) {
+      if (!error.isCancelled) rethrow;
+    }
+  }
+
+  Future<T> _trackOnlineRequest<T>(
+    String requestId,
+    Future<T> Function() request,
+  ) async {
+    _activeSourceRequests.add(requestId);
+    try {
+      return await request();
+    } finally {
+      _activeSourceRequests.remove(requestId);
+    }
+  }
+
+  void _cancelOnlineRequests() {
+    for (final requestId in _activeSourceRequests.toList(growable: false)) {
+      _sourceAdapter.cancel(requestId);
+    }
+    _activeSourceRequests.clear();
   }
 
   void _updateLoadingProgress(double value, {String? detail}) {

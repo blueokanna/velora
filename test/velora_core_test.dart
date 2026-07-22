@@ -280,6 +280,35 @@ void main() {
     expect(source.contentSelector, '#content');
   });
 
+  test(
+    'Book source validation and rule version survive import serialization',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final notifier = SourcesNotifier(prefs);
+      final payload = _sourceJson('可验证书源', 'https://validation.example')
+        ..['version'] = 7
+        ..['validation'] = {
+          'min_text_chars': 320,
+          'deny_keywords': ['自定义验证页', '请登录'],
+        };
+
+      await notifier.importJson(jsonEncode(payload));
+
+      final source = notifier.state.single;
+      expect(source.ruleVersion, 7);
+      expect(source.minTextChars, 320);
+      expect(source.denyKeywords, ['自定义验证页', '请登录']);
+      final serialized =
+          jsonDecode(source.toJsonString()) as Map<String, dynamic>;
+      expect(serialized['rule_version'], 7);
+      expect(
+        (serialized['validation'] as Map<String, dynamic>)['min_text_chars'],
+        320,
+      );
+    },
+  );
+
   test('SourcesNotifier maps explore and RSS rule fields', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();

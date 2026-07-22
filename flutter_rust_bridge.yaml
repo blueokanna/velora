@@ -1,3 +1,8 @@
 rust_input: crate::api
 rust_root: rust/
 dart_output: lib/src/rust
+auto_upgrade_dependency: false
+deps_check: false
+dart_fix: false
+dart_format: false
+rust_format: false

@@ -1,10 +1,13 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use regex::Regex;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::api::http_source::http_get;
+use crate::api::source_runtime::{
+    failure, fetch_for_source, finish_request, record_source_failure, record_source_success,
+    register_request, FailureKind, FetchTrace, SourceFailureInfo, SourceOperation,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BookSource {
@@ -28,6 +31,50 @@ pub struct BookSource {
     pub toc_name: String,
     pub toc_url: String,
     pub content_selector: String,
+    #[serde(default = "default_rule_version", alias = "version")]
+    pub rule_version: u32,
+    #[serde(default)]
+    pub validation: SourceValidation,
+}
+
+fn default_rule_version() -> u32 {
+    1
+}
+
+fn default_min_text_chars() -> usize {
+    100
+}
+
+fn default_deny_keywords() -> Vec<String> {
+    [
+        "验证码",
+        "访问过于频繁",
+        "访问频繁",
+        "人机验证",
+        "安全验证",
+        "内容加载失败",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceValidation {
+    #[serde(default = "default_min_text_chars")]
+    pub min_text_chars: usize,
+    #[serde(default = "default_deny_keywords")]
+    pub deny_keywords: Vec<String>,
+}
+
+#[flutter_rust_bridge::frb(ignore)]
+impl Default for SourceValidation {
+    fn default() -> Self {
+        Self {
+            min_text_chars: default_min_text_chars(),
+            deny_keywords: default_deny_keywords(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +99,30 @@ pub struct BookDetail {
 pub struct TocEntry {
     pub title: String,
     pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceSearchOutcome {
+    pub results: Vec<SearchResult>,
+    pub failure: Option<SourceFailureInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceBookDetailOutcome {
+    pub detail: Option<BookDetail>,
+    pub failure: Option<SourceFailureInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceTocOutcome {
+    pub entries: Vec<TocEntry>,
+    pub failure: Option<SourceFailureInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceContentOutcome {
+    pub content: String,
+    pub failure: Option<SourceFailureInfo>,
 }
 
 #[derive(Clone, Debug)]
@@ -367,7 +438,11 @@ fn convert_xpath_segment(segment: &str) -> Option<ConvertedXPathSegment> {
     }
 
     Some(ConvertedXPathSegment {
-        css: if css.is_empty() { Some("*".to_string()) } else { Some(css) },
+        css: if css.is_empty() {
+            Some("*".to_string())
+        } else {
+            Some(css)
+        },
         text_equals,
         mode: None,
         is_extractor: false,
@@ -417,11 +492,8 @@ fn normalize_css_selector(selector: &str) -> String {
 
 fn parse_selector(rule: &str) -> Result<(Selector, Option<String>)> {
     let parsed = normalize_rule(rule);
-    let selector = parsed
-        .selector
-        .ok_or_else(|| anyhow!("选择器为空"))?;
-    let selector = Selector::parse(&selector)
-        .map_err(|e| anyhow!("选择器无效: {e:?}"))?;
+    let selector = parsed.selector.ok_or_else(|| anyhow!("选择器为空"))?;
+    let selector = Selector::parse(&selector).map_err(|e| anyhow!("选择器无效: {e:?}"))?;
     Ok((selector, parsed.text_equals))
 }
 
@@ -433,7 +505,12 @@ fn text_matches(element_text: &str, expected: &Option<String>) -> bool {
 }
 
 fn element_text(element: scraper::element_ref::ElementRef<'_>) -> String {
-    element.text().collect::<Vec<_>>().join("\n").trim().to_string()
+    element
+        .text()
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
 }
 
 fn select_first_matching<'a>(
@@ -490,7 +567,10 @@ fn extract_raw_cleanup_value(raw_text: &str, cleanup: &Option<(String, String)>)
     out.trim().to_string()
 }
 
-fn extract_many_raw_cleanup_values(raw_text: &str, cleanup: &Option<(String, String)>) -> Vec<String> {
+fn extract_many_raw_cleanup_values(
+    raw_text: &str,
+    cleanup: &Option<(String, String)>,
+) -> Vec<String> {
     let Some((pattern, replacement)) = cleanup else {
         return vec![raw_text.trim().to_string()];
     };
@@ -530,7 +610,8 @@ fn extract_with_rule(
     base_url: Option<&str>,
 ) -> String {
     let parsed = normalize_rule(rule);
-    let uses_raw_cleanup = parsed.cleanup.is_some() && parsed.mode.is_none() && parsed.selector.is_none();
+    let uses_raw_cleanup =
+        parsed.cleanup.is_some() && parsed.mode.is_none() && parsed.selector.is_none();
     let mode = parsed.mode.clone().unwrap_or(default_mode);
     let extracted = if let Some(selector_text) = parsed.selector {
         let Ok(selector) = Selector::parse(&selector_text) else {
@@ -566,7 +647,8 @@ fn extract_many_with_rule(
     base_url: Option<&str>,
 ) -> Vec<String> {
     let parsed = normalize_rule(rule);
-    let uses_raw_cleanup = parsed.cleanup.is_some() && parsed.mode.is_none() && parsed.selector.is_none();
+    let uses_raw_cleanup =
+        parsed.cleanup.is_some() && parsed.mode.is_none() && parsed.selector.is_none();
     let mode = parsed.mode.clone().unwrap_or(default_mode);
     let values = if let Some(selector_text) = parsed.selector {
         let Ok(selector) = Selector::parse(&selector_text) else {
@@ -753,8 +835,7 @@ fn json_string_from_rule(value: &Value, rule: &str) -> String {
 }
 
 fn regex_rows_from_rule(text: &str, rule: &str) -> Result<Vec<RegexRow>> {
-    let pattern = normalize_regex_list_rule(rule)
-        .ok_or_else(|| anyhow!("规则不是正则列表格式"))?;
+    let pattern = normalize_regex_list_rule(rule).ok_or_else(|| anyhow!("规则不是正则列表格式"))?;
     let regex = Regex::new(&pattern).map_err(|error| anyhow!("正则规则无效: {error}"))?;
     let mut rows = Vec::new();
     for captures in regex.captures_iter(text) {
@@ -807,7 +888,9 @@ fn regex_value_from_rule(row: &RegexRow, rule: &str, base_url: Option<&str>) -> 
 
 fn extract_from_document(doc: &Html, mode: &ExtractMode) -> String {
     match mode {
-        ExtractMode::Text | ExtractMode::TextNodes => doc.root_element().text().collect::<Vec<_>>().join("\n"),
+        ExtractMode::Text | ExtractMode::TextNodes => {
+            doc.root_element().text().collect::<Vec<_>>().join("\n")
+        }
         ExtractMode::Html => doc.root_element().html(),
         ExtractMode::Attr(_) | ExtractMode::ResourceUrl => String::new(),
     }
@@ -830,7 +913,14 @@ fn extract_from_element(
             }
         }
         ExtractMode::ResourceUrl => {
-            for attr in ["src", "data-src", "data-original", "data-lazy-src", "href", "content"] {
+            for attr in [
+                "src",
+                "data-src",
+                "data-original",
+                "data-lazy-src",
+                "href",
+                "content",
+            ] {
                 if let Some(value) = element.value().attr(attr) {
                     return if let Some(base) = base_url {
                         absolute_url(base, value)
@@ -856,21 +946,113 @@ fn absolute_url(base: &str, href: &str) -> String {
     href.to_string()
 }
 
-#[flutter_rust_bridge::frb]
-pub fn source_search(source_json: String, keyword: String) -> Result<Vec<SearchResult>> {
-    let src: BookSource = serde_json::from_str(&source_json).context("书源 JSON 解析失败")?;
-    if !src.enabled {
-        return Err(anyhow!("书源已禁用: {}", src.name));
+fn parse_source(source_json: &str) -> std::result::Result<BookSource, SourceFailureInfo> {
+    serde_json::from_str(source_json).map_err(|error| {
+        failure(
+            FailureKind::InvalidRule,
+            format!("书源 JSON 解析失败: {error}"),
+            None,
+        )
+    })
+}
+
+fn source_fetch(
+    src: &BookSource,
+    operation: SourceOperation,
+    url: &str,
+    cancellation: Option<&tokio_util::sync::CancellationToken>,
+) -> std::result::Result<FetchTrace, SourceFailureInfo> {
+    fetch_for_source(
+        &src.name,
+        &src.url,
+        operation,
+        url,
+        &[],
+        src.rule_version,
+        cancellation,
+    )
+}
+
+fn blocked_response(src: &BookSource, text: &str) -> bool {
+    default_deny_keywords()
+        .iter()
+        .chain(src.validation.deny_keywords.iter())
+        .any(|keyword| !keyword.is_empty() && text.contains(keyword))
+}
+
+fn empty_parse_failure(src: &BookSource, body: &str, operation: &str) -> SourceFailureInfo {
+    if blocked_response(src, body) {
+        failure(
+            FailureKind::AuthDenied,
+            format!("{operation}响应包含验证码或访问限制页面"),
+            None,
+        )
+    } else {
+        failure(
+            FailureKind::ParserBroken,
+            format!("{operation}规则未解析出有效内容"),
+            None,
+        )
     }
-    let url = render_search_url(&src, &keyword)?;
-    let resp = http_get(url.clone(), vec![])?;
-    if let Some(json) = parse_json_value(&resp.body) {
+}
+
+fn validate_chapter_content(
+    src: &BookSource,
+    response_body: &str,
+    content: &str,
+) -> std::result::Result<usize, SourceFailureInfo> {
+    if blocked_response(src, content)
+        || (content.is_empty() && blocked_response(src, response_body))
+    {
+        return Err(failure(
+            FailureKind::AuthDenied,
+            "正文响应包含验证码或访问限制页面",
+            None,
+        ));
+    }
+    let non_whitespace_chars = content
+        .chars()
+        .filter(|value| !value.is_whitespace())
+        .count();
+    let minimum = src.validation.min_text_chars.max(1);
+    if non_whitespace_chars < minimum {
+        return Err(failure(
+            FailureKind::InvalidContent,
+            format!("正文有效字符不足（实际 {non_whitespace_chars}，要求至少 {minimum}）"),
+            None,
+        ));
+    }
+    Ok(non_whitespace_chars)
+}
+
+fn source_search_impl(
+    source_json: &str,
+    keyword: &str,
+    cancellation: Option<&tokio_util::sync::CancellationToken>,
+) -> std::result::Result<Vec<SearchResult>, SourceFailureInfo> {
+    let src = parse_source(source_json)?;
+    if !src.enabled {
+        return Err(failure(
+            FailureKind::InvalidRule,
+            format!("书源已禁用: {}", src.name),
+            None,
+        ));
+    }
+    let url = render_search_url(&src, keyword)
+        .map_err(|error| failure(FailureKind::InvalidRule, error.to_string(), None))?;
+    let trace = source_fetch(&src, SourceOperation::Search, &url, cancellation)?;
+    let resp = &trace.response;
+    let parsed_result = if let Some(json) = parse_json_value(&resp.body) {
         let mut out = Vec::new();
         for item in json_list_from_rule(&json, &src.search_list) {
             let name = json_string_from_rule(item, &src.search_name);
             let author = json_string_from_rule(item, &src.search_author);
-            let book_url = absolute_url(&resp.url, &json_string_from_rule(item, &src.search_book_url));
-            let cover_url = absolute_url(&resp.url, &json_string_from_rule(item, &src.search_cover));
+            let book_url = absolute_url(
+                &resp.url,
+                &json_string_from_rule(item, &src.search_book_url),
+            );
+            let cover_url =
+                absolute_url(&resp.url, &json_string_from_rule(item, &src.search_cover));
             if name.is_empty() || book_url.is_empty() {
                 continue;
             }
@@ -882,9 +1064,8 @@ pub fn source_search(source_json: String, keyword: String) -> Result<Vec<SearchR
                 source_name: src.name.clone(),
             });
         }
-        return Ok(out);
-    }
-    if let Ok(rows) = regex_rows_from_rule(&resp.body, &src.search_list) {
+        Ok(out)
+    } else if let Ok(rows) = regex_rows_from_rule(&resp.body, &src.search_list) {
         let mut out = Vec::new();
         for row in rows {
             let name = regex_value_from_rule(&row, &src.search_name, None);
@@ -903,20 +1084,73 @@ pub fn source_search(source_json: String, keyword: String) -> Result<Vec<SearchR
             });
         }
         if !out.is_empty() {
-            return Ok(out);
+            Ok(out)
+        } else {
+            parse_search_html(&src, resp)
         }
+    } else {
+        parse_search_html(&src, resp)
+    };
+    let parsed = match parsed_result {
+        Ok(parsed) => parsed,
+        Err(source_failure) => {
+            record_source_failure(&trace, &source_failure);
+            return Err(source_failure);
+        }
+    };
+    if parsed.is_empty() {
+        let source_failure = empty_parse_failure(&src, &resp.body, "搜索");
+        record_source_failure(&trace, &source_failure);
+        return Err(source_failure);
     }
+    record_source_success(&trace, parsed.len(), 0);
+    Ok(parsed)
+}
+
+fn parse_search_html(
+    src: &BookSource,
+    resp: &crate::api::http_source::HttpResponse,
+) -> std::result::Result<Vec<SearchResult>, SourceFailureInfo> {
     let doc = Html::parse_document(&resp.body);
-    let (list_sel, text_equals) =
-        parse_selector(&src.search_list).map_err(|e| anyhow!("搜索列表选择器无效: {e}"))?;
+    let (list_sel, text_equals) = parse_selector(&src.search_list).map_err(|error| {
+        failure(
+            FailureKind::InvalidRule,
+            format!("搜索列表选择器无效: {error}"),
+            None,
+        )
+    })?;
     let mut out = Vec::new();
     for el in select_all_matching(&doc, &list_sel, &text_equals) {
         let html_str = el.html();
         let sub = Html::parse_fragment(&html_str);
-        let name = extract_with_rule(&sub, &html_str, &src.search_name, ExtractMode::Text, Some(&resp.url));
-        let author = extract_with_rule(&sub, &html_str, &src.search_author, ExtractMode::Text, Some(&resp.url));
-        let book_url = extract_with_rule(&sub, &html_str, &src.search_book_url, ExtractMode::Attr("href".to_string()), Some(&resp.url));
-        let cover_url = extract_with_rule(&sub, &html_str, &src.search_cover, ExtractMode::ResourceUrl, Some(&resp.url));
+        let name = extract_with_rule(
+            &sub,
+            &html_str,
+            &src.search_name,
+            ExtractMode::Text,
+            Some(&resp.url),
+        );
+        let author = extract_with_rule(
+            &sub,
+            &html_str,
+            &src.search_author,
+            ExtractMode::Text,
+            Some(&resp.url),
+        );
+        let book_url = extract_with_rule(
+            &sub,
+            &html_str,
+            &src.search_book_url,
+            ExtractMode::Attr("href".to_string()),
+            Some(&resp.url),
+        );
+        let cover_url = extract_with_rule(
+            &sub,
+            &html_str,
+            &src.search_cover,
+            ExtractMode::ResourceUrl,
+            Some(&resp.url),
+        );
         if name.is_empty() || book_url.is_empty() {
             continue;
         }
@@ -929,6 +1163,32 @@ pub fn source_search(source_json: String, keyword: String) -> Result<Vec<SearchR
         });
     }
     Ok(out)
+}
+
+#[flutter_rust_bridge::frb]
+pub fn source_search(source_json: String, keyword: String) -> Result<Vec<SearchResult>> {
+    source_search_impl(&source_json, &keyword, None).map_err(anyhow::Error::new)
+}
+
+#[flutter_rust_bridge::frb]
+pub fn source_search_reliable(
+    source_json: String,
+    keyword: String,
+    request_id: String,
+) -> SourceSearchOutcome {
+    let cancellation = register_request(&request_id);
+    let result = source_search_impl(&source_json, &keyword, cancellation.as_ref());
+    finish_request(&request_id);
+    match result {
+        Ok(results) => SourceSearchOutcome {
+            results,
+            failure: None,
+        },
+        Err(source_failure) => SourceSearchOutcome {
+            results: Vec::new(),
+            failure: Some(source_failure),
+        },
+    }
 }
 
 fn render_search_url(src: &BookSource, keyword: &str) -> Result<String> {
@@ -954,54 +1214,129 @@ fn render_search_url(src: &BookSource, keyword: &str) -> Result<String> {
     Ok(absolute_url(&src.url, &rendered))
 }
 
-#[flutter_rust_bridge::frb]
-pub fn source_book_detail(source_json: String, book_url: String) -> Result<BookDetail> {
-    let src: BookSource = serde_json::from_str(&source_json).context("书源 JSON 解析失败")?;
-    let resp = http_get(book_url.clone(), vec![])?;
-    if let Some(json) = parse_json_value(&resp.body) {
+fn source_book_detail_impl(
+    source_json: &str,
+    book_url: &str,
+    cancellation: Option<&tokio_util::sync::CancellationToken>,
+) -> std::result::Result<BookDetail, SourceFailureInfo> {
+    let src = parse_source(source_json)?;
+    let trace = source_fetch(&src, SourceOperation::BookDetail, book_url, cancellation)?;
+    let resp = &trace.response;
+    let detail = if let Some(json) = parse_json_value(&resp.body) {
         let name = json_string_from_rule(&json, &src.book_info_name);
         let author = json_string_from_rule(&json, &src.book_info_author);
         let intro = json_string_from_rule(&json, &src.book_info_intro);
-        let cover_url = absolute_url(&resp.url, &json_string_from_rule(&json, &src.book_info_cover));
+        let cover_url = absolute_url(
+            &resp.url,
+            &json_string_from_rule(&json, &src.book_info_cover),
+        );
         let toc_value = json_string_from_rule(&json, &src.book_info_toc_url);
         let toc_url = if toc_value.is_empty() {
-            book_url.clone()
+            book_url.to_string()
         } else {
             absolute_url(&resp.url, &toc_value)
         };
-        return Ok(BookDetail {
+        BookDetail {
             name,
             author,
             intro,
             cover_url,
             toc_url,
-        });
-    }
-    let doc = Html::parse_document(&resp.body);
-    let name = extract_with_rule(&doc, &resp.body, &src.book_info_name, ExtractMode::Text, Some(&resp.url));
-    let author = extract_with_rule(&doc, &resp.body, &src.book_info_author, ExtractMode::Text, Some(&resp.url));
-    let intro = extract_with_rule(&doc, &resp.body, &src.book_info_intro, ExtractMode::TextNodes, Some(&resp.url));
-    let cover_url = extract_with_rule(&doc, &resp.body, &src.book_info_cover, ExtractMode::ResourceUrl, Some(&resp.url));
-    let toc_value = extract_with_rule(&doc, &resp.body, &src.book_info_toc_url, ExtractMode::Attr("href".to_string()), Some(&resp.url));
-    let toc_url = if toc_value.is_empty() {
-        book_url.clone()
+        }
     } else {
-        toc_value
+        let doc = Html::parse_document(&resp.body);
+        let name = extract_with_rule(
+            &doc,
+            &resp.body,
+            &src.book_info_name,
+            ExtractMode::Text,
+            Some(&resp.url),
+        );
+        let author = extract_with_rule(
+            &doc,
+            &resp.body,
+            &src.book_info_author,
+            ExtractMode::Text,
+            Some(&resp.url),
+        );
+        let intro = extract_with_rule(
+            &doc,
+            &resp.body,
+            &src.book_info_intro,
+            ExtractMode::TextNodes,
+            Some(&resp.url),
+        );
+        let cover_url = extract_with_rule(
+            &doc,
+            &resp.body,
+            &src.book_info_cover,
+            ExtractMode::ResourceUrl,
+            Some(&resp.url),
+        );
+        let toc_value = extract_with_rule(
+            &doc,
+            &resp.body,
+            &src.book_info_toc_url,
+            ExtractMode::Attr("href".to_string()),
+            Some(&resp.url),
+        );
+        let toc_url = if toc_value.is_empty() {
+            book_url.to_string()
+        } else {
+            toc_value
+        };
+        BookDetail {
+            name,
+            author,
+            intro,
+            cover_url,
+            toc_url,
+        }
     };
-    Ok(BookDetail {
-        name,
-        author,
-        intro,
-        cover_url,
-        toc_url,
-    })
+    if detail.toc_url.trim().is_empty() {
+        let source_failure = empty_parse_failure(&src, &resp.body, "详情");
+        record_source_failure(&trace, &source_failure);
+        return Err(source_failure);
+    }
+    record_source_success(&trace, 1, detail.intro.chars().count());
+    Ok(detail)
 }
 
 #[flutter_rust_bridge::frb]
-pub fn source_toc(source_json: String, toc_url: String) -> Result<Vec<TocEntry>> {
-    let src: BookSource = serde_json::from_str(&source_json).context("书源 JSON 解析失败")?;
-    let resp = http_get(toc_url, vec![])?;
-    if let Some(json) = parse_json_value(&resp.body) {
+pub fn source_book_detail(source_json: String, book_url: String) -> Result<BookDetail> {
+    source_book_detail_impl(&source_json, &book_url, None).map_err(anyhow::Error::new)
+}
+
+#[flutter_rust_bridge::frb]
+pub fn source_book_detail_reliable(
+    source_json: String,
+    book_url: String,
+    request_id: String,
+) -> SourceBookDetailOutcome {
+    let cancellation = register_request(&request_id);
+    let result = source_book_detail_impl(&source_json, &book_url, cancellation.as_ref());
+    finish_request(&request_id);
+    match result {
+        Ok(detail) => SourceBookDetailOutcome {
+            detail: Some(detail),
+            failure: None,
+        },
+        Err(source_failure) => SourceBookDetailOutcome {
+            detail: None,
+            failure: Some(source_failure),
+        },
+    }
+}
+
+fn source_toc_impl(
+    source_json: &str,
+    toc_url: &str,
+    cancellation: Option<&tokio_util::sync::CancellationToken>,
+) -> std::result::Result<Vec<TocEntry>, SourceFailureInfo> {
+    let src = parse_source(source_json)?;
+    let trace = source_fetch(&src, SourceOperation::Toc, toc_url, cancellation)?;
+    let resp = &trace.response;
+    let parsed_result = if let Some(json) = parse_json_value(&resp.body) {
         let mut out = Vec::new();
         for item in json_list_from_rule(&json, &src.toc_list) {
             let title = json_string_from_rule(item, &src.toc_name);
@@ -1011,9 +1346,8 @@ pub fn source_toc(source_json: String, toc_url: String) -> Result<Vec<TocEntry>>
             }
             out.push(TocEntry { title, url: href });
         }
-        return Ok(out);
-    }
-    if let Ok(rows) = regex_rows_from_rule(&resp.body, &src.toc_list) {
+        Ok(out)
+    } else if let Ok(rows) = regex_rows_from_rule(&resp.body, &src.toc_list) {
         let mut out = Vec::new();
         for row in rows {
             let title = regex_value_from_rule(&row, &src.toc_name, None);
@@ -1024,43 +1358,154 @@ pub fn source_toc(source_json: String, toc_url: String) -> Result<Vec<TocEntry>>
             out.push(TocEntry { title, url: href });
         }
         if !out.is_empty() {
-            return Ok(out);
+            Ok(out)
+        } else {
+            parse_toc_html(&src, resp)
         }
+    } else {
+        parse_toc_html(&src, resp)
+    };
+    let parsed = match parsed_result {
+        Ok(parsed) => parsed,
+        Err(source_failure) => {
+            record_source_failure(&trace, &source_failure);
+            return Err(source_failure);
+        }
+    };
+    if parsed.is_empty() {
+        let source_failure = empty_parse_failure(&src, &resp.body, "目录");
+        record_source_failure(&trace, &source_failure);
+        return Err(source_failure);
     }
+    record_source_success(&trace, parsed.len(), 0);
+    Ok(parsed)
+}
+
+fn parse_toc_html(
+    src: &BookSource,
+    resp: &crate::api::http_source::HttpResponse,
+) -> std::result::Result<Vec<TocEntry>, SourceFailureInfo> {
     let doc = Html::parse_document(&resp.body);
-    let (list_sel, text_equals) =
-        parse_selector(&src.toc_list).map_err(|e| anyhow!("目录列表选择器无效: {e}"))?;
+    let (list_sel, text_equals) = parse_selector(&src.toc_list).map_err(|error| {
+        failure(
+            FailureKind::InvalidRule,
+            format!("目录列表选择器无效: {error}"),
+            None,
+        )
+    })?;
     let mut out = Vec::new();
     for el in select_all_matching(&doc, &list_sel, &text_equals) {
         let html_str = el.html();
         let sub = Html::parse_fragment(&html_str);
-        let title = extract_with_rule(&sub, &html_str, &src.toc_name, ExtractMode::Text, Some(&resp.url));
-        let href = extract_with_rule(&sub, &html_str, &src.toc_url, ExtractMode::Attr("href".to_string()), Some(&resp.url));
+        let title = extract_with_rule(
+            &sub,
+            &html_str,
+            &src.toc_name,
+            ExtractMode::Text,
+            Some(&resp.url),
+        );
+        let href = extract_with_rule(
+            &sub,
+            &html_str,
+            &src.toc_url,
+            ExtractMode::Attr("href".to_string()),
+            Some(&resp.url),
+        );
         if title.is_empty() || href.is_empty() {
             continue;
         }
-        out.push(TocEntry {
-            title,
-            url: href,
-        });
+        out.push(TocEntry { title, url: href });
     }
     Ok(out)
 }
 
 #[flutter_rust_bridge::frb]
-pub fn source_chapter_content(source_json: String, chapter_url: String) -> Result<String> {
-    let src: BookSource = serde_json::from_str(&source_json).context("书源 JSON 解析失败")?;
-    let resp = http_get(chapter_url, vec![])?;
-    if let Some(json) = parse_json_value(&resp.body) {
+pub fn source_toc(source_json: String, toc_url: String) -> Result<Vec<TocEntry>> {
+    source_toc_impl(&source_json, &toc_url, None).map_err(anyhow::Error::new)
+}
+
+#[flutter_rust_bridge::frb]
+pub fn source_toc_reliable(
+    source_json: String,
+    toc_url: String,
+    request_id: String,
+) -> SourceTocOutcome {
+    let cancellation = register_request(&request_id);
+    let result = source_toc_impl(&source_json, &toc_url, cancellation.as_ref());
+    finish_request(&request_id);
+    match result {
+        Ok(entries) => SourceTocOutcome {
+            entries,
+            failure: None,
+        },
+        Err(source_failure) => SourceTocOutcome {
+            entries: Vec::new(),
+            failure: Some(source_failure),
+        },
+    }
+}
+
+fn source_chapter_content_impl(
+    source_json: &str,
+    chapter_url: &str,
+    cancellation: Option<&tokio_util::sync::CancellationToken>,
+) -> std::result::Result<String, SourceFailureInfo> {
+    let src = parse_source(source_json)?;
+    let trace = source_fetch(&src, SourceOperation::Content, chapter_url, cancellation)?;
+    let resp = &trace.response;
+    let content = if let Some(json) = parse_json_value(&resp.body) {
         let content = json_string_from_rule(&json, &src.content_selector);
         if !content.is_empty() {
-            return Ok(content.replace("\u{a0}", " ").trim().to_string());
+            content.replace("\u{a0}", " ").trim().to_string()
+        } else {
+            String::new()
         }
+    } else {
+        let doc = Html::parse_document(&resp.body);
+        let parts = extract_many_with_rule(
+            &doc,
+            &resp.body,
+            &src.content_selector,
+            ExtractMode::TextNodes,
+            Some(&resp.url),
+        );
+        parts.join("\n\n").replace("\u{a0}", " ").trim().to_string()
+    };
+    let non_whitespace_chars = match validate_chapter_content(&src, &resp.body, &content) {
+        Ok(length) => length,
+        Err(source_failure) => {
+            record_source_failure(&trace, &source_failure);
+            return Err(source_failure);
+        }
+    };
+    record_source_success(&trace, 1, non_whitespace_chars);
+    Ok(content)
+}
+
+#[flutter_rust_bridge::frb]
+pub fn source_chapter_content(source_json: String, chapter_url: String) -> Result<String> {
+    source_chapter_content_impl(&source_json, &chapter_url, None).map_err(anyhow::Error::new)
+}
+
+#[flutter_rust_bridge::frb]
+pub fn source_chapter_content_reliable(
+    source_json: String,
+    chapter_url: String,
+    request_id: String,
+) -> SourceContentOutcome {
+    let cancellation = register_request(&request_id);
+    let result = source_chapter_content_impl(&source_json, &chapter_url, cancellation.as_ref());
+    finish_request(&request_id);
+    match result {
+        Ok(content) => SourceContentOutcome {
+            content,
+            failure: None,
+        },
+        Err(source_failure) => SourceContentOutcome {
+            content: String::new(),
+            failure: Some(source_failure),
+        },
     }
-    let doc = Html::parse_document(&resp.body);
-    let parts = extract_many_with_rule(&doc, &resp.body, &src.content_selector, ExtractMode::TextNodes, Some(&resp.url));
-    let cleaned = parts.join("\n\n").replace("\u{a0}", " ");
-    Ok(cleaned)
 }
 
 fn urlencoding_lite(s: &str) -> String {
@@ -1100,6 +1545,8 @@ mod tests {
             toc_name: "a".to_string(),
             toc_url: "a".to_string(),
             content_selector: "#content".to_string(),
+            rule_version: 1,
+            validation: SourceValidation::default(),
         }
     }
 
@@ -1139,7 +1586,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(rows.len(), 1);
-        assert_eq!(regex_value_from_rule(&rows[0], "$1", Some("https://example.com/book/")), "https://example.com/chapter/1");
+        assert_eq!(
+            regex_value_from_rule(&rows[0], "$1", Some("https://example.com/book/")),
+            "https://example.com/chapter/1"
+        );
         assert_eq!(regex_value_from_rule(&rows[0], "$2", None), "第一章");
     }
 
@@ -1164,19 +1614,43 @@ mod tests {
         );
         let raw = doc.root_element().html();
         assert_eq!(
-            extract_with_rule(&doc, &raw, "@css:.name@text", ExtractMode::Text, Some("https://example.com/base/")),
+            extract_with_rule(
+                &doc,
+                &raw,
+                "@css:.name@text",
+                ExtractMode::Text,
+                Some("https://example.com/base/")
+            ),
             "测试书"
         );
         assert_eq!(
-            extract_with_rule(&doc, &raw, ".name", ExtractMode::Attr("href".to_string()), Some("https://example.com/base/")),
+            extract_with_rule(
+                &doc,
+                &raw,
+                ".name",
+                ExtractMode::Attr("href".to_string()),
+                Some("https://example.com/base/")
+            ),
             "https://example.com/book/1"
         );
         assert_eq!(
-            extract_with_rule(&doc, &raw, "@css:[property=og:image]@content", ExtractMode::Text, Some("https://example.com/base/")),
+            extract_with_rule(
+                &doc,
+                &raw,
+                "@css:[property=og:image]@content",
+                ExtractMode::Text,
+                Some("https://example.com/base/")
+            ),
             "https://example.com/og.jpg"
         );
         assert_eq!(
-            extract_with_rule(&doc, &raw, "@css:.cover", ExtractMode::ResourceUrl, Some("https://example.com/base/")),
+            extract_with_rule(
+                &doc,
+                &raw,
+                "@css:.cover",
+                ExtractMode::ResourceUrl,
+                Some("https://example.com/base/")
+            ),
             "https://example.com/cover.jpg"
         );
     }
@@ -1197,7 +1671,9 @@ mod tests {
 
     #[test]
     fn extract_with_rule_applies_cleanup_suffix() {
-        let doc = Html::parse_document(r#"<html><body><div id='content'>正文内容 搜索一下 下载APP</div></body></html>"#);
+        let doc = Html::parse_document(
+            r#"<html><body><div id='content'>正文内容 搜索一下 下载APP</div></body></html>"#,
+        );
         let raw = doc.root_element().html();
         let value = extract_with_rule(
             &doc,
@@ -1207,5 +1683,37 @@ mod tests {
             Some("https://example.com"),
         );
         assert_eq!(value, "正文内容");
+    }
+
+    #[test]
+    fn chapter_validation_rejects_short_and_verification_content() {
+        let src = sample_source("/search?q={key}");
+        let short = validate_chapter_content(&src, "<html></html>", "只有几个字")
+            .expect_err("short content must fail");
+        assert_eq!(short.kind, FailureKind::InvalidContent);
+
+        let denied = validate_chapter_content(&src, "<html></html>", "请完成人机验证后继续")
+            .expect_err("verification content must fail");
+        assert_eq!(denied.kind, FailureKind::AuthDenied);
+    }
+
+    #[test]
+    fn chapter_validation_honors_source_specific_minimum() {
+        let mut src = sample_source("/search?q={key}");
+        src.validation.min_text_chars = 4;
+        assert_eq!(validate_chapter_content(&src, "", "短章节正文").unwrap(), 5);
+    }
+
+    #[test]
+    fn empty_parser_result_distinguishes_rule_breakage_from_access_denial() {
+        let src = sample_source("/search?q={key}");
+        assert_eq!(
+            empty_parse_failure(&src, "<html><body></body></html>", "目录").kind,
+            FailureKind::ParserBroken
+        );
+        assert_eq!(
+            empty_parse_failure(&src, "访问过于频繁，请稍后再试", "目录").kind,
+            FailureKind::AuthDenied
+        );
     }
 }

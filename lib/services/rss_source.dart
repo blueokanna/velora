@@ -6,12 +6,14 @@ import 'package:xml/xml.dart';
 
 import '../src/rust/api/book_source.dart' as bs;
 import '../state/sources.dart';
+import 'source_adapter.dart';
 
 const _rssSyntheticUrlPrefix = 'velora-rss://entry/';
 
 class RssSourceService {
   const RssSourceService();
 
+  static const _sourceAdapter = SourceAdapterService();
   static const _cacheKey = 'rss_source_entry_cache_v1';
   static const _maxCacheEntries = 64;
 
@@ -115,9 +117,11 @@ class RssSourceService {
     }
     if (source.contentSelector.trim().isNotEmpty &&
         entry.link.trim().isNotEmpty) {
-      final content = await bs.sourceChapterContent(
-        sourceJson: source.toJsonString(),
-        chapterUrl: entry.link,
+      final requestId = _sourceAdapter.createRequestId('rss-content');
+      final content = await _sourceAdapter.chapterContent(
+        source.toJsonString(),
+        entry.link,
+        requestId: requestId,
       );
       final normalized = content.trim();
       if (normalized.isNotEmpty) {

@@ -33,6 +33,7 @@ Velora 是一个面向生产环境的跨平台小说阅读器，使用 Flutter �
 - 离线书籍会优先读取 EPUB 内嵌标题、作者和封面；TXT、MOBI、AZW3 等缺失元数据时，可基于书名从公开页面补全标题、作者、简介和封面 URL。
 - 在线元数据查找面向 Qidian、Fanqie Novel、Qimao、Tadu、17K、Faloo、GoodNovel、Wuxiaworld、Royal Road 等公开小说页面，只处理书名、作者、简介、封面等基础元数据，不抓取正文内容。
 - 在线阅读兼容多种风格书源 JSON，支持搜索、详情、目录、正文抓取和封面 URL 提取。
+- CSS/JSON/正则在线书源的搜索、详情、目录和正文请求统一经过 Rust 资源运行时：按状态码和语义结果区分瞬态网络、限流、认证拒绝、资源下架、规则失效与无效正文；瞬态失败最多重试 2 次，每源最多 4 个并发请求，并支持退避、取消、冷却熔断和脱敏健康观测。
 - `发现` 页在未输入搜索词时，会优先消费启用书源的探索页、发现页和 RSS 订阅结果；如果书源没有探索规则，再自动回退到搜索规则抓取首批可读内容，避免出现“书源已导入但发现页仍为空”的情况。
 - 标准 RSS 订阅源开箱即用，只填写 `sourceUrl/sourceName` 也能导入；带 `ruleArticles`、`ruleTitle`、`ruleDescription`、`ruleImage`、`ruleLink`、`ruleContent` 的自定义 RSS 源也会被识别并接入 `发现` 页与书架阅读流。
 - 书源导入支持直接粘贴 JSON、HTTP(S) 书源地址、阅读类在线导入链接、YCKCEO 书源详情页地址，以及包含多个 JSON 链接的批量文本输入。
@@ -45,7 +46,7 @@ Velora 是一个面向生产环境的跨平台小说阅读器，使用 Flutter �
 - Android 已声明 TXT 外部打开入口，系统“打开方式”与默认应用列表可直接显示 Velora，并会在启动后由原生 I/O 线程把 `content://` 或 `file://` 文档流式镜像到应用私有目录，再交给 Rust 文件路径读取。
 - Android 阅读正文新增原生 StaticLayout 分页与绘制通道，并在分页阶段预热最终页布局；阅读器会把当前页与前后页提前做原生预绑定，并持续量化真实翻页路径上的 bind/layout 耗时与预绑定命中率，正文页在 Android 设备上可直接走平台视图渲染与页视图复用池，不再完全依赖 Flutter `Text` 组件参与排版与绘制。
 - 阅读器会按书籍、章节、视口和排版参数把已知页断点直接写回 Rust 的 TXT sidecar 联合缓存；sidecar 还会按版式分层记录热门页窗口，并持续回收真实回跳补页跨度、热门窗口命中率和原生页预绑定反馈，让窗口大小与保留策略按实际阅读行为自适应。
-- `发现` 页对书源搜索与推荐加载增加了单源超时、批量增量回显、骨架列表、结果项入场动画和列表内刷新进度，不再长时间停留在空白等待态。
+- `发现` 页对书源搜索与推荐加载增加了 Rust 侧请求超时/取消、批量增量回显、骨架列表、结果项入场动画和列表内刷新进度；切换搜索或离开页面会取消仍在运行的请求。
 - 阅读页支持左右点击翻页、拖拽跟手翻页、目录面板、书签面板和阅读设置；中部点按只负责显示或隐藏工具层。
 - 仿真翻页支持实时拖拽跟手、非线性拖拽进度、卷页阴影、高光折痕和章节边界连续衔接。
 - 阅读设置支持翻页效果、字号、行高、页边距、阅读字体等持久化配置；字号与行高滑杆改为拖动预览、松手后重排，字体卡片会按实际字体渲染预览。
@@ -56,6 +57,7 @@ Velora 是一个面向生产环境的跨平台小说阅读器，使用 Flutter �
 
 - Flutter 层负责应用壳、导航、Material Design 3 组件、响应式布局、状态持久化和平台集成。
 - Rust 层负责书籍解析、目录提取、章节读取、在线书源请求与书架存储。
+- 在线书源在 Rust 中分为一次请求/解码层、可靠性运行时与规则解析层；Flutter 通过 `SourceAdapterService` 只消费稳定结果 DTO 和结构化失败，不再在页面中直接决定重试或按异常字符串猜测失败类别。书源导入下载与 RSS feed 解析仍由现有 Dart 专用服务负责。
 - Flutter 与 Rust 通过 flutter_rust_bridge 通信，阅读器和测试环境都能显式注入动态库、文档目录和 SharedPreferences。
 - Android 文档 URI 先在 Kotlin 层以 256KB 缓冲流式复制到应用私有 `files/books` 目录，Dart 层只接收本地路径和元数据，不再接收整本 `Uint8List`。
 - TXT 文件访问层只做文件路径、编码样本缓存、mmap 窗口读取和按范围读取；偏移索引层按章节标题与 64KB 级行边界锚点生成稀疏片段，并把章节锚点、整段前缀页断点、按版式分层的热门页窗口以及恢复命中反馈一并写入 Rust sidecar 联合缓存；分页布局层会优先命中 sidecar 中已有的最接近目标页的窗口，再对当前片段渐进分页，并基于真实命中率、补页跨度和原生页耗时自动调整窗口大小与保留数量；显示缓冲层只保留当前章节附近的页面窗口和少量章节缓存。
@@ -120,6 +122,7 @@ Velora 不会也不能通过应用仓库直接安装、升级或替换系统级�
 - `lib/main.dart`：正式启动入口、测试可注入启动准备阶段。
 - `lib/features/bookshelf`：书架、导入、封面卡片、打开入口。
 - `lib/services/source_recommendations.dart`：发现页默认推荐内容装载。
+- `lib/services/source_adapter.dart`：Flutter 到 Rust 在线书源运行时的稳定 DTO、取消与错误文案边界。
 - `lib/features/reader`：阅读器、渐进分页、Android StaticLayout 通道、页断点持久化缓存、目录、书签、阅读设置、加载过渡。
 - `lib/features/settings`：主题、语言、翻页效果和全局配置。
 - `lib/router`：主壳层导航与阅读器过渡路由。
@@ -127,6 +130,7 @@ Velora 不会也不能通过应用仓库直接安装、升级或替换系统级�
 - `lib/theme`：主题色、字体、Motion token 和阅读排版。
 - `lib/widgets/page_turn.dart`：翻页状态机、拖拽跟手、卷页阴影和转场表现。
 - `rust/src/api/book_file.rs`：本地书籍格式解析、TXT sidecar 锚点缓存与章节读取。
+- `rust/src/api/source_runtime.rs`：在线书源错误分类、有限重试、每源并发、取消、熔断和脱敏观测。
 - `rust/src/api/storage.rs`：书架与元数据持久化。
 - `integration_test`：设备级路径验证。
 - `test`：Dart 单元与组件测试。
@@ -202,6 +206,11 @@ Velora 当前支持以下核心字段：
   "toc_name": "a",
   "toc_url": "a",
   "content_selector": "#content",
+  "rule_version": 7,
+  "validation": {
+    "min_text_chars": 300,
+    "deny_keywords": ["验证码", "访问过于频繁", "内容加载失败"]
+  },
   "rss_articles": "$.list[*]",
   "rss_title": "$.title",
   "rss_pub_date": "$.pubDate",
@@ -213,6 +222,8 @@ Velora 当前支持以下核心字段：
 ```
 
 CSS Selector 会基于响应 URL 自动解析相对链接，正文抓取结果进入统一阅读器分页与进度恢复流程。Velora 也兼容常见的 `bookSourceName`、`bookSourceUrl`、`sourceName`、`sourceUrl`、`searchUrl`、`enabledExplore`、`exploreUrl`、`ruleSearch`、`ruleExplore`、`ruleBookInfo`、`ruleToc`、`ruleContent`、`ruleArticles`、`ruleTitle`、`rulePubDate`、`ruleDescription`、`ruleImage`、`ruleLink` 字段，并会把 `coverUrl` 映射为封面选择器。
+
+`validation.min_text_chars` 默认是 100，按去除空白后的 Unicode 字符计数。搜索结果为零、目录为零或正文低于阈值不会再被当作成功；验证页关键词会分类为认证/访问限制，其他空解析结果分类为规则失效。运行时观测不保存完整 URL、查询参数、Cookie 或响应正文。
 
 如果粘贴内容中包含多个 JSON 链接，Velora 会自动逐个抓取并批量导入；如果粘贴的是 YCKCEO 详情页地址一键导入链接，Velora 会先提取真实 JSON 下载地址再导入。
 

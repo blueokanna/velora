@@ -40,6 +40,9 @@ class BookSourceModel {
   final String tocName;
   final String tocUrl;
   final String contentSelector;
+  final int ruleVersion;
+  final int minTextChars;
+  final List<String> denyKeywords;
   final String rssArticles;
   final String rssTitle;
   final String rssPubDate;
@@ -77,6 +80,9 @@ class BookSourceModel {
     required this.tocName,
     required this.tocUrl,
     required this.contentSelector,
+    this.ruleVersion = 1,
+    this.minTextChars = 100,
+    this.denyKeywords = const [],
     this.rssArticles = '',
     this.rssTitle = '',
     this.rssPubDate = '',
@@ -150,6 +156,9 @@ class BookSourceModel {
       tocName: tocName,
       tocUrl: tocUrl,
       contentSelector: contentSelector,
+      ruleVersion: ruleVersion,
+      minTextChars: minTextChars,
+      denyKeywords: denyKeywords,
       rssArticles: rssArticles,
       rssTitle: rssTitle,
       rssPubDate: rssPubDate,
@@ -189,6 +198,11 @@ class BookSourceModel {
     'toc_name': tocName,
     'toc_url': tocUrl,
     'content_selector': contentSelector,
+    'rule_version': ruleVersion,
+    'validation': {
+      'min_text_chars': minTextChars,
+      'deny_keywords': denyKeywords,
+    },
     'rss_articles': rssArticles,
     'rss_title': rssTitle,
     'rss_pub_date': rssPubDate,
@@ -212,6 +226,7 @@ class BookSourceModel {
     final rssContentRules = isRssPayload
         ? _mapField(j, 'ruleContent')
         : const <String, dynamic>{};
+    final validation = _mapField(j, 'validation');
     return BookSourceModel(
       name: _stringField(j, ['name', 'bookSourceName', 'sourceName']),
       url: _stringField(j, ['url', 'bookSourceUrl', 'sourceUrl']),
@@ -301,6 +316,15 @@ class BookSourceModel {
         contentRules,
         ['content'],
       ),
+      ruleVersion: _intField(j, ['rule_version', 'version'], fallback: 1),
+      minTextChars: _intField(validation, [
+        'min_text_chars',
+        'minTextChars',
+      ], fallback: 100).clamp(1, 100000),
+      denyKeywords: _stringListField(validation, [
+        'deny_keywords',
+        'denyKeywords',
+      ]),
       rssArticles: _stringField(j, ['rss_articles', 'ruleArticles']),
       rssTitle: _stringField(j, ['rss_title', 'ruleTitle']),
       rssPubDate: _stringField(j, ['rss_pub_date', 'rulePubDate']),
@@ -345,6 +369,9 @@ class BookSourceModel {
     tocName: tocName,
     tocUrl: tocUrl,
     contentSelector: contentSelector,
+    ruleVersion: ruleVersion,
+    minTextChars: minTextChars,
+    denyKeywords: denyKeywords,
     rssArticles: rssArticles,
     rssTitle: rssTitle,
     rssPubDate: rssPubDate,
@@ -735,6 +762,28 @@ int _intField(
     }
   }
   return fallback;
+}
+
+List<String> _stringListField(Map<String, dynamic> raw, List<String> keys) {
+  for (final key in keys) {
+    final value = raw[key];
+    if (value is List) {
+      return List<String>.unmodifiable(
+        value
+            .map((item) => item.toString().trim())
+            .where((item) => item.isNotEmpty),
+      );
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      return List<String>.unmodifiable(
+        value
+            .split(RegExp(r'[,，\n]'))
+            .map((item) => item.trim())
+            .where((item) => item.isNotEmpty),
+      );
+    }
+  }
+  return const [];
 }
 
 bool _looksLikeRssSource(Map<String, dynamic> raw) {

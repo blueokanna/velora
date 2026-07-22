@@ -10,6 +10,7 @@ import 'api/app_start.dart';
 import 'api/book_file.dart';
 import 'api/book_source.dart';
 import 'api/http_source.dart';
+import 'api/source_runtime.dart';
 import 'api/storage.dart';
 import 'api/txt_book.dart';
 import 'dart:async';
@@ -55,7 +56,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
+  BookDetail dco_decode_box_autoadd_book_detail(dynamic raw);
+
+  @protected
   BookshelfEntry dco_decode_box_autoadd_bookshelf_entry(dynamic raw);
+
+  @protected
+  FailureKind dco_decode_box_autoadd_failure_kind(dynamic raw);
+
+  @protected
+  PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
+
+  @protected
+  SourceFailureInfo dco_decode_box_autoadd_source_failure_info(dynamic raw);
 
   @protected
   TxtLayoutFeedbackInput dco_decode_box_autoadd_txt_layout_feedback_input(
@@ -71,13 +84,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  int dco_decode_box_autoadd_u_16(dynamic raw);
+
+  @protected
   BigInt dco_decode_box_autoadd_u_64(dynamic raw);
 
   @protected
   ChapterIndex dco_decode_chapter_index(dynamic raw);
 
   @protected
+  CircuitState dco_decode_circuit_state(dynamic raw);
+
+  @protected
+  double dco_decode_f_64(dynamic raw);
+
+  @protected
+  FailureKind dco_decode_failure_kind(dynamic raw);
+
+  @protected
   HttpResponse dco_decode_http_response(dynamic raw);
+
+  @protected
+  int dco_decode_i_32(dynamic raw);
 
   @protected
   PlatformInt64 dco_decode_i_64(dynamic raw);
@@ -118,6 +146,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<SearchResult> dco_decode_list_search_result(dynamic raw);
 
   @protected
+  List<SourceHealthSnapshot> dco_decode_list_source_health_snapshot(
+    dynamic raw,
+  );
+
+  @protected
+  List<SourceObservation> dco_decode_list_source_observation(dynamic raw);
+
+  @protected
   List<TocEntry> dco_decode_list_toc_entry(dynamic raw);
 
   @protected
@@ -125,6 +161,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  BookDetail? dco_decode_opt_box_autoadd_book_detail(dynamic raw);
+
+  @protected
+  FailureKind? dco_decode_opt_box_autoadd_failure_kind(dynamic raw);
+
+  @protected
+  PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
+
+  @protected
+  SourceFailureInfo? dco_decode_opt_box_autoadd_source_failure_info(
+    dynamic raw,
+  );
 
   @protected
   TxtLayoutTelemetry? dco_decode_opt_box_autoadd_txt_layout_telemetry(
@@ -135,6 +185,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   TxtPageCacheSelection? dco_decode_opt_box_autoadd_txt_page_cache_selection(
     dynamic raw,
   );
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_16(dynamic raw);
 
   @protected
   BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
@@ -156,6 +209,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SearchResult dco_decode_search_result(dynamic raw);
+
+  @protected
+  SourceBookDetailOutcome dco_decode_source_book_detail_outcome(dynamic raw);
+
+  @protected
+  SourceContentOutcome dco_decode_source_content_outcome(dynamic raw);
+
+  @protected
+  SourceFailureInfo dco_decode_source_failure_info(dynamic raw);
+
+  @protected
+  SourceHealthSnapshot dco_decode_source_health_snapshot(dynamic raw);
+
+  @protected
+  SourceObservation dco_decode_source_observation(dynamic raw);
+
+  @protected
+  SourceOperation dco_decode_source_operation(dynamic raw);
+
+  @protected
+  SourceSearchOutcome dco_decode_source_search_outcome(dynamic raw);
+
+  @protected
+  SourceTocOutcome dco_decode_source_toc_outcome(dynamic raw);
 
   @protected
   TocEntry dco_decode_toc_entry(dynamic raw);
@@ -225,7 +302,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
+  BookDetail sse_decode_box_autoadd_book_detail(SseDeserializer deserializer);
+
+  @protected
   BookshelfEntry sse_decode_box_autoadd_bookshelf_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  FailureKind sse_decode_box_autoadd_failure_kind(SseDeserializer deserializer);
+
+  @protected
+  PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
+  SourceFailureInfo sse_decode_box_autoadd_source_failure_info(
     SseDeserializer deserializer,
   );
 
@@ -245,13 +336,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  int sse_decode_box_autoadd_u_16(SseDeserializer deserializer);
+
+  @protected
   BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
   ChapterIndex sse_decode_chapter_index(SseDeserializer deserializer);
 
   @protected
+  CircuitState sse_decode_circuit_state(SseDeserializer deserializer);
+
+  @protected
+  double sse_decode_f_64(SseDeserializer deserializer);
+
+  @protected
+  FailureKind sse_decode_failure_kind(SseDeserializer deserializer);
+
+  @protected
   HttpResponse sse_decode_http_response(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
@@ -304,6 +410,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<SourceHealthSnapshot> sse_decode_list_source_health_snapshot(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<SourceObservation> sse_decode_list_source_observation(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<TocEntry> sse_decode_list_toc_entry(SseDeserializer deserializer);
 
   @protected
@@ -315,6 +431,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
+  BookDetail? sse_decode_opt_box_autoadd_book_detail(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  FailureKind? sse_decode_opt_box_autoadd_failure_kind(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
+  SourceFailureInfo? sse_decode_opt_box_autoadd_source_failure_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   TxtLayoutTelemetry? sse_decode_opt_box_autoadd_txt_layout_telemetry(
     SseDeserializer deserializer,
   );
@@ -323,6 +457,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   TxtPageCacheSelection? sse_decode_opt_box_autoadd_txt_page_cache_selection(
     SseDeserializer deserializer,
   );
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_16(SseDeserializer deserializer);
 
   @protected
   BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
@@ -348,6 +485,40 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SearchResult sse_decode_search_result(SseDeserializer deserializer);
+
+  @protected
+  SourceBookDetailOutcome sse_decode_source_book_detail_outcome(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SourceContentOutcome sse_decode_source_content_outcome(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SourceFailureInfo sse_decode_source_failure_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SourceHealthSnapshot sse_decode_source_health_snapshot(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SourceObservation sse_decode_source_observation(SseDeserializer deserializer);
+
+  @protected
+  SourceOperation sse_decode_source_operation(SseDeserializer deserializer);
+
+  @protected
+  SourceSearchOutcome sse_decode_source_search_outcome(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SourceTocOutcome sse_decode_source_toc_outcome(SseDeserializer deserializer);
 
   @protected
   TocEntry sse_decode_toc_entry(SseDeserializer deserializer);
@@ -394,9 +565,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
-
-  @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
     SseSerializer serializer,
@@ -436,8 +604,32 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_book_detail(
+    BookDetail self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_bookshelf_entry(
     BookshelfEntry self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_failure_kind(
+    FailureKind self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_i_64(
+    PlatformInt64 self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_source_failure_info(
+    SourceFailureInfo self,
     SseSerializer serializer,
   );
 
@@ -460,13 +652,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_u_16(int self, SseSerializer serializer);
+
+  @protected
   void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_chapter_index(ChapterIndex self, SseSerializer serializer);
 
   @protected
+  void sse_encode_circuit_state(CircuitState self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_f_64(double self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_failure_kind(FailureKind self, SseSerializer serializer);
+
+  @protected
   void sse_encode_http_response(HttpResponse self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
@@ -535,6 +742,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_source_health_snapshot(
+    List<SourceHealthSnapshot> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_source_observation(
+    List<SourceObservation> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_toc_entry(List<TocEntry> self, SseSerializer serializer);
 
   @protected
@@ -547,6 +766,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_book_detail(
+    BookDetail? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_failure_kind(
+    FailureKind? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_i_64(
+    PlatformInt64? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_source_failure_info(
+    SourceFailureInfo? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_txt_layout_telemetry(
     TxtLayoutTelemetry? self,
     SseSerializer serializer,
@@ -557,6 +800,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     TxtPageCacheSelection? self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_16(int? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
@@ -584,6 +830,54 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_search_result(SearchResult self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_source_book_detail_outcome(
+    SourceBookDetailOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_source_content_outcome(
+    SourceContentOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_source_failure_info(
+    SourceFailureInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_source_health_snapshot(
+    SourceHealthSnapshot self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_source_observation(
+    SourceObservation self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_source_operation(
+    SourceOperation self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_source_search_outcome(
+    SourceSearchOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_source_toc_outcome(
+    SourceTocOutcome self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_toc_entry(TocEntry self, SseSerializer serializer);
@@ -635,9 +929,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
 }
 
 // Section: wire_class

@@ -7,8 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../l10n/app_localizations.dart';
 import '../../services/local_books.dart';
 import '../../services/rss_source.dart';
+import '../../services/source_adapter.dart';
 import '../../services/source_recommendations.dart';
 import '../../src/rust/api/book_source.dart' as bs;
+import '../../src/rust/api/source_runtime.dart' as runtime_api;
 import '../../src/rust/api/storage.dart' as rs;
 import '../../state/bookshelf.dart';
 import '../../state/settings.dart';
@@ -24,7 +26,7 @@ class DiscoverPage extends ConsumerStatefulWidget {
 class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   static const _recommendations = SourceRecommendationsService();
   static const _rss = RssSourceService();
-  static const _sourceRequestTimeout = Duration(seconds: 8);
+  static const _sourceAdapter = SourceAdapterService();
 
   final _controller = TextEditingController();
   List<bs.SearchResult> _results = const [];
@@ -34,6 +36,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   String? _error;
   String _sourceSignature = '';
   int _requestToken = 0;
+  final Set<String> _activeSourceRequests = <String>{};
 
   @override
   void initState() {
@@ -54,6 +57,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       await _loadRecommendations();
       return;
     }
+    _cancelSourceRequests(operation: 'search');
     final requestToken = ++_requestToken;
     setState(() {
       _loading = true;
@@ -185,6 +189,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     final prefs = ref.read(sharedPreferencesProvider);
     final results = <bs.SearchResult>[];
     final seen = <String>{};
+    final failures = <SourceRequestFailure>[];
     for (var start = 0; start < sources.length; start += concurrency) {
       final end = math.min(start + concurrency, sources.length);
       final batch = sources.sublist(start, end);
@@ -199,9 +204,22 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                 keyword: keyword,
               );
             }
-            return await bs
-                .sourceSearch(sourceJson: src.toJsonString(), keyword: keyword)
-                .timeout(_sourceRequestTimeout);
+            final requestId = _sourceAdapter.createRequestId('search');
+            _activeSourceRequests.add(requestId);
+            try {
+              return await _sourceAdapter.search(
+                src,
+                keyword,
+                requestId: requestId,
+              );
+            } finally {
+              _activeSourceRequests.remove(requestId);
+            }
+          } on SourceRequestFailure catch (error) {
+            if (error.info.kind != runtime_api.FailureKind.cancelled) {
+              failures.add(error);
+            }
+            return const <bs.SearchResult>[];
           } catch (_) {
             return const <bs.SearchResult>[];
           }
@@ -221,6 +239,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       if (end < sources.length) {
         await Future<void>.delayed(Duration.zero);
       }
+    }
+    if (results.isEmpty && failures.isNotEmpty) {
+      throw failures.first;
     }
     return results;
   }
@@ -278,13 +299,23 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         return;
       }
       final sourceJson = source.toJsonString();
-      final detail = await bs.sourceBookDetail(
-        sourceJson: sourceJson,
-        bookUrl: result.bookUrl,
+      final detailRequestId = _sourceAdapter.createRequestId('detail');
+      final detail = await _trackSourceRequest(
+        detailRequestId,
+        () => _sourceAdapter.bookDetail(
+          sourceJson,
+          result.bookUrl,
+          requestId: detailRequestId,
+        ),
       );
-      final toc = await bs.sourceToc(
-        sourceJson: sourceJson,
-        tocUrl: detail.tocUrl,
+      final tocRequestId = _sourceAdapter.createRequestId('toc');
+      final toc = await _trackSourceRequest(
+        tocRequestId,
+        () => _sourceAdapter.toc(
+          sourceJson,
+          detail.tocUrl,
+          requestId: tocRequestId,
+        ),
       );
       if (toc.isEmpty) throw StateError('目录为空');
       final title = detail.name.trim().isEmpty ? result.name : detail.name;
@@ -327,8 +358,34 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
 
   @override
   void dispose() {
+    _cancelSourceRequests();
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<T> _trackSourceRequest<T>(
+    String requestId,
+    Future<T> Function() request,
+  ) async {
+    _activeSourceRequests.add(requestId);
+    try {
+      return await request();
+    } finally {
+      _activeSourceRequests.remove(requestId);
+    }
+  }
+
+  void _cancelSourceRequests({String? operation}) {
+    final requests = _activeSourceRequests
+        .where(
+          (requestId) =>
+              operation == null || requestId.startsWith('$operation-'),
+        )
+        .toList(growable: false);
+    for (final requestId in requests) {
+      _sourceAdapter.cancel(requestId);
+      _activeSourceRequests.remove(requestId);
+    }
   }
 
   void _ensureRecommendations(List<BookSourceModel> sources) {

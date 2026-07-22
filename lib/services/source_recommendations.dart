@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'rss_source.dart';
+import 'source_adapter.dart';
 import '../src/rust/api/book_source.dart' as bs;
 import '../state/sources.dart';
 
@@ -12,9 +13,9 @@ class SourceRecommendationsService {
   const SourceRecommendationsService();
 
   static const _rss = RssSourceService();
+  static const _sourceAdapter = SourceAdapterService();
 
   static const cacheTtl = Duration(hours: 6);
-  static const _sourceTimeout = Duration(seconds: 8);
   static const maxSourceCacheEntries = 24;
   static const maxCacheEntries = 6;
   static const _sourceCacheKey = 'discover_recommendations_source_cache_v3';
@@ -258,13 +259,9 @@ class SourceRecommendationsService {
     }
     for (final keyword in _keywordsForSource(source)) {
       try {
+        final requestId = _sourceAdapter.createRequestId('recommendation');
         final results =
-            (await bs
-                    .sourceSearch(
-                      sourceJson: source.toJsonString(),
-                      keyword: keyword,
-                    )
-                    .timeout(_sourceTimeout))
+            (await _sourceAdapter.search(source, keyword, requestId: requestId))
                 .where((item) => item.name.trim().isNotEmpty)
                 .take(maxPerSource)
                 .toList(growable: false);
@@ -285,13 +282,13 @@ class SourceRecommendationsService {
       final exploreSource = source.toExploreSearchSource(entryUrl);
       if (exploreSource == null) continue;
       try {
+        final requestId = _sourceAdapter.createRequestId('explore');
         final results =
-            (await bs
-                    .sourceSearch(
-                      sourceJson: exploreSource.toJsonString(),
-                      keyword: '',
-                    )
-                    .timeout(_sourceTimeout))
+            (await _sourceAdapter.search(
+                  exploreSource,
+                  '',
+                  requestId: requestId,
+                ))
                 .where((item) => item.name.trim().isNotEmpty)
                 .take(maxPerSource)
                 .toList(growable: false);

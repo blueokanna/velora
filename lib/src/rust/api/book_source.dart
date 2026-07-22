@@ -5,10 +5,12 @@
 
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+import 'source_runtime.dart';
 
-// These functions are ignored because they are not marked as `pub`: `absolute_url`, `apply_cleanup`, `convert_xpath_segment`, `element_text`, `extract_from_document`, `extract_from_element`, `extract_many_raw_cleanup_values`, `extract_many_with_rule`, `extract_raw_cleanup_value`, `extract_with_rule`, `find_matching_bracket`, `json_list_from_rule`, `json_nodes_from_rule`, `json_scalar_to_string`, `json_string_from_rule`, `looks_like_json_text`, `normalize_css_selector`, `normalize_regex_list_rule`, `normalize_rule`, `parse_json_path`, `parse_json_value`, `parse_selector`, `parse_xpath_like_rule`, `regex_rows_from_rule`, `regex_value_from_rule`, `render_search_url`, `select_all_matching`, `select_first_matching`, `split_cleanup`, `split_selector_mode`, `split_xpath_segments`, `text_matches`, `urlencoding_lite`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BookSource`, `ConvertedXPathSegment`, `ExtractMode`, `JsonPathPart`, `ParsedQuery`, `RegexRow`, `XPathLikeQuery`, `XPathSegment`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `absolute_url`, `apply_cleanup`, `blocked_response`, `convert_xpath_segment`, `default_deny_keywords`, `default_min_text_chars`, `default_rule_version`, `element_text`, `empty_parse_failure`, `extract_from_document`, `extract_from_element`, `extract_many_raw_cleanup_values`, `extract_many_with_rule`, `extract_raw_cleanup_value`, `extract_with_rule`, `find_matching_bracket`, `json_list_from_rule`, `json_nodes_from_rule`, `json_scalar_to_string`, `json_string_from_rule`, `looks_like_json_text`, `normalize_css_selector`, `normalize_regex_list_rule`, `normalize_rule`, `parse_json_path`, `parse_json_value`, `parse_search_html`, `parse_selector`, `parse_source`, `parse_toc_html`, `parse_xpath_like_rule`, `regex_rows_from_rule`, `regex_value_from_rule`, `render_search_url`, `select_all_matching`, `select_first_matching`, `source_book_detail_impl`, `source_chapter_content_impl`, `source_fetch`, `source_search_impl`, `source_toc_impl`, `split_cleanup`, `split_selector_mode`, `split_xpath_segments`, `text_matches`, `urlencoding_lite`, `validate_chapter_content`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BookSource`, `ConvertedXPathSegment`, `ExtractMode`, `JsonPathPart`, `ParsedQuery`, `RegexRow`, `SourceValidation`, `XPathLikeQuery`, `XPathSegment`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `default`
 
 Future<List<SearchResult>> sourceSearch({
   required String sourceJson,
@@ -16,6 +18,16 @@ Future<List<SearchResult>> sourceSearch({
 }) => RustLib.instance.api.crateApiBookSourceSourceSearch(
   sourceJson: sourceJson,
   keyword: keyword,
+);
+
+Future<SourceSearchOutcome> sourceSearchReliable({
+  required String sourceJson,
+  required String keyword,
+  required String requestId,
+}) => RustLib.instance.api.crateApiBookSourceSourceSearchReliable(
+  sourceJson: sourceJson,
+  keyword: keyword,
+  requestId: requestId,
 );
 
 Future<BookDetail> sourceBookDetail({
@@ -26,6 +38,16 @@ Future<BookDetail> sourceBookDetail({
   bookUrl: bookUrl,
 );
 
+Future<SourceBookDetailOutcome> sourceBookDetailReliable({
+  required String sourceJson,
+  required String bookUrl,
+  required String requestId,
+}) => RustLib.instance.api.crateApiBookSourceSourceBookDetailReliable(
+  sourceJson: sourceJson,
+  bookUrl: bookUrl,
+  requestId: requestId,
+);
+
 Future<List<TocEntry>> sourceToc({
   required String sourceJson,
   required String tocUrl,
@@ -34,12 +56,32 @@ Future<List<TocEntry>> sourceToc({
   tocUrl: tocUrl,
 );
 
+Future<SourceTocOutcome> sourceTocReliable({
+  required String sourceJson,
+  required String tocUrl,
+  required String requestId,
+}) => RustLib.instance.api.crateApiBookSourceSourceTocReliable(
+  sourceJson: sourceJson,
+  tocUrl: tocUrl,
+  requestId: requestId,
+);
+
 Future<String> sourceChapterContent({
   required String sourceJson,
   required String chapterUrl,
 }) => RustLib.instance.api.crateApiBookSourceSourceChapterContent(
   sourceJson: sourceJson,
   chapterUrl: chapterUrl,
+);
+
+Future<SourceContentOutcome> sourceChapterContentReliable({
+  required String sourceJson,
+  required String chapterUrl,
+  required String requestId,
+}) => RustLib.instance.api.crateApiBookSourceSourceChapterContentReliable(
+  sourceJson: sourceJson,
+  chapterUrl: chapterUrl,
+  requestId: requestId,
 );
 
 class BookDetail {
@@ -110,6 +152,78 @@ class SearchResult {
           bookUrl == other.bookUrl &&
           coverUrl == other.coverUrl &&
           sourceName == other.sourceName;
+}
+
+class SourceBookDetailOutcome {
+  final BookDetail? detail;
+  final SourceFailureInfo? failure;
+
+  const SourceBookDetailOutcome({this.detail, this.failure});
+
+  @override
+  int get hashCode => detail.hashCode ^ failure.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceBookDetailOutcome &&
+          runtimeType == other.runtimeType &&
+          detail == other.detail &&
+          failure == other.failure;
+}
+
+class SourceContentOutcome {
+  final String content;
+  final SourceFailureInfo? failure;
+
+  const SourceContentOutcome({required this.content, this.failure});
+
+  @override
+  int get hashCode => content.hashCode ^ failure.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceContentOutcome &&
+          runtimeType == other.runtimeType &&
+          content == other.content &&
+          failure == other.failure;
+}
+
+class SourceSearchOutcome {
+  final List<SearchResult> results;
+  final SourceFailureInfo? failure;
+
+  const SourceSearchOutcome({required this.results, this.failure});
+
+  @override
+  int get hashCode => results.hashCode ^ failure.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceSearchOutcome &&
+          runtimeType == other.runtimeType &&
+          results == other.results &&
+          failure == other.failure;
+}
+
+class SourceTocOutcome {
+  final List<TocEntry> entries;
+  final SourceFailureInfo? failure;
+
+  const SourceTocOutcome({required this.entries, this.failure});
+
+  @override
+  int get hashCode => entries.hashCode ^ failure.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SourceTocOutcome &&
+          runtimeType == other.runtimeType &&
+          entries == other.entries &&
+          failure == other.failure;
 }
 
 class TocEntry {
