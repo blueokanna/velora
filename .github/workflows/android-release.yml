@@ -68,7 +68,7 @@ jobs:
 
       - name: Analyze and test Flutter application
         run: |
-          flutter analyze
+          flutter analyze lib test integration_test
           flutter test test
 
       - name: Require release signing secrets for tag builds
