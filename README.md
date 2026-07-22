@@ -164,6 +164,37 @@ cargo test --manifest-path D:\RustProject\velora\rust\Cargo.toml
 powershell -ExecutionPolicy Bypass -File D:\RustProject\velora\tool\generate_icons.ps1
 ```
 
+## GitHub Actions Android 发布
+
+工作流 [`.github/workflows/android-release.yml`](.github/workflows/android-release.yml) 会在向 `main` 的 Pull Request、推送 `v*` 标签和手动运行时执行。它固定使用 Flutter `3.44.6`、Rust `1.97.0` 和 `flutter_rust_bridge_codegen 2.12.0`，并依次执行：
+
+- `flutter_rust_bridge_codegen generate --config-file flutter_rust_bridge.yaml`，并直接使用生成的 `lib/src/rust` 绑定参与构建；
+- Rust 测试、Flutter 静态分析和 Flutter 测试；
+- `flutter build apk --release --split-per-abi`，生成 `armeabi-v7a`、`arm64-v8a` 和 `x86_64` APK；
+- 计算 APK 的 SHA-256 校验和，并将 APK 和 `SHA256SUMS.txt` 上传为 Actions artifact。
+
+推送版本标签时，工作流还会创建同名 GitHub Release 并上传上述文件。为防止发布 debug 签名包，请先在仓库的 **Settings > Secrets and variables > Actions** 添加以下四个 Repository secrets：
+
+- `ANDROID_KEYSTORE_BASE64`：发布 keystore 文件的单行 Base64 内容；
+- `ANDROID_KEYSTORE_PASSWORD`：keystore 密码；
+- `ANDROID_KEY_ALIAS`：签名别名；
+- `ANDROID_KEY_PASSWORD`：该别名的密码。
+
+在 Windows PowerShell 中可这样生成第一个 Secret 的值：
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes(".\velora-release.jks"))
+```
+
+Secret 配置完成后，创建并推送标签即可发布：
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+本地若在 `android/key.properties` 中配置 `storeFile`、`storePassword`、`keyAlias` 和 `keyPassword`，Release 构建也会使用同一签名配置；该文件和 keystore 已被 `.gitignore` 排除。
+
 ## 当前验证基线
 
 - `flutter analyze D:\RustProject\velora` 通过。
