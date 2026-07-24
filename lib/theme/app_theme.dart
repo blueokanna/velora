@@ -66,7 +66,26 @@ class AppTheme {
     );
   }
 
-  static TextStyle readingTextStyle(TextStyle base, ReaderFontPreset preset) {
+  static TextStyle readingTextStyle(
+    TextStyle base,
+    ReaderFontPreset preset, {
+    String? fontFamily,
+  }) {
+    final requestedFamily = fontFamily?.trim() ?? '';
+    if (requestedFamily.startsWith('VeloraLocal_')) {
+      return base.copyWith(
+        fontFamily: requestedFamily,
+        fontFamilyFallback: readerFontFallback,
+      );
+    }
+    if (useGoogleFonts &&
+        requestedFamily.isNotEmpty &&
+        GoogleFonts.asMap().containsKey(requestedFamily)) {
+      return GoogleFonts.getFont(
+        requestedFamily,
+        textStyle: base,
+      ).copyWith(fontFamilyFallback: readerFontFallback);
+    }
     final style = switch (preset) {
       ReaderFontPreset.notoSerif =>
         useGoogleFonts

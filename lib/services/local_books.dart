@@ -3,10 +3,14 @@ import 'dart:io';
 import '../features/reader/book_meta_codec.dart';
 import '../services/book_metadata_lookup.dart';
 import '../services/document_file.dart';
+import '../services/source_adapter.dart';
 import '../src/rust/api/book_file.dart' as book_file;
+import '../src/rust/api/book_source.dart' as source_api;
 import '../src/rust/api/storage.dart' as rs;
+import '../state/sources.dart';
 
 const _metadataLookup = BookMetadataLookup();
+const _sourceAdapter = SourceAdapterService();
 
 class LocalBookSourceInfo {
   final String name;
@@ -56,6 +60,7 @@ Future<LocalBookSourceInfo?> describeLocalBook(rs.BookshelfEntry book) async {
 Future<rs.BookshelfEntry?> refreshLocalBookEntry(
   rs.BookshelfEntry book, {
   bool force = false,
+  Iterable<BookSourceModel> sources = const [],
 }) async {
   final migrated = await _migrateDocumentUriBook(book);
   final workingBook = migrated ?? book;
@@ -86,6 +91,7 @@ Future<rs.BookshelfEntry?> refreshLocalBookEntry(
     author: meta.author,
     cover: meta.coverDataUrl,
     force: force,
+    sources: sources,
   );
   final encoded = encodeBookMeta(
     meta,
@@ -119,13 +125,22 @@ Future<rs.BookshelfEntry?> refreshLocalBookEntry(
 Future<rs.BookshelfEntry> enrichBookEntryMetadata(
   rs.BookshelfEntry entry, {
   bool force = false,
+  Iterable<BookSourceModel> sources = const [],
 }) async {
   final needsLookup =
       force || entry.author.trim().isEmpty || _empty(entry.cover);
   if (!needsLookup) return entry;
   final online = entry.kind == 'online'
       ? await _metadataLookup.lookupByUrl(entry.pathOrUrl)
-      : await _metadataLookup.lookupByTitle(entry.title, author: entry.author);
+      : await _lookupMetadataFromBookSources(
+              entry.title,
+              author: entry.author,
+              sources: sources,
+            ) ??
+            await _metadataLookup.lookupByTitle(
+              entry.title,
+              author: entry.author,
+            );
   if (online == null) return entry;
   return rs.BookshelfEntry(
     id: entry.id,
@@ -153,10 +168,135 @@ Future<BookMetadata?> _lookupLocalMetadata(
   required String author,
   required String? cover,
   required bool force,
+  required Iterable<BookSourceModel> sources,
 }) async {
   if (!force && author.trim().isNotEmpty && !_empty(cover)) return null;
-  return _metadataLookup.lookupByTitle(title, author: author);
+  return await _lookupMetadataFromBookSources(
+        title,
+        author: author,
+        sources: sources,
+      ) ??
+      await _metadataLookup.lookupByTitle(title, author: author);
 }
+
+Future<BookMetadata?> _lookupMetadataFromBookSources(
+  String title, {
+  required String author,
+  required Iterable<BookSourceModel> sources,
+}) async {
+  final candidates = sources
+      .where(
+        (source) =>
+            source.enabled &&
+            source.searchUrl.trim().isNotEmpty &&
+            source.searchList.trim().isNotEmpty &&
+            !source.searchUrl.toLowerCase().contains('@js') &&
+            !source.searchList.toLowerCase().contains('<js>'),
+      )
+      .take(4)
+      .toList(growable: false);
+  if (candidates.isEmpty) return null;
+  final matches = await Future.wait(
+    candidates.map(
+      (source) =>
+          _lookupMetadataFromBookSource(source, title: title, author: author),
+    ),
+  );
+  for (final match in matches) {
+    if (match != null && match.coverUrl.trim().isNotEmpty) return match;
+  }
+  return null;
+}
+
+Future<BookMetadata?> _lookupMetadataFromBookSource(
+  BookSourceModel source, {
+  required String title,
+  required String author,
+}) async {
+  try {
+    final searchRequestId = _sourceAdapter.createRequestId('local-cover');
+    final results = await _sourceAdapter.search(
+      source,
+      title,
+      requestId: searchRequestId,
+    );
+    final match = selectBestSourceMetadataMatch(
+      results,
+      title: title,
+      author: author,
+    );
+    if (match == null) return null;
+    var coverUrl = match.coverUrl.trim();
+    var matchedAuthor = match.author.trim();
+    var matchedTitle = match.name.trim();
+    if (coverUrl.isEmpty) {
+      final detailRequestId = _sourceAdapter.createRequestId(
+        'local-cover-detail',
+      );
+      final detail = await _sourceAdapter.bookDetail(
+        source.toJsonString(),
+        match.bookUrl,
+        requestId: detailRequestId,
+      );
+      coverUrl = detail.coverUrl.trim();
+      if (detail.author.trim().isNotEmpty) matchedAuthor = detail.author.trim();
+      if (detail.name.trim().isNotEmpty) matchedTitle = detail.name.trim();
+    }
+    if (coverUrl.isEmpty) return null;
+    return BookMetadata(
+      title: matchedTitle,
+      author: matchedAuthor,
+      description: '',
+      coverUrl: coverUrl,
+      detailUrl: match.bookUrl,
+      sourceName: source.name,
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+source_api.SearchResult? selectBestSourceMetadataMatch(
+  Iterable<source_api.SearchResult> results, {
+  required String title,
+  required String author,
+}) {
+  final expectedTitle = _normalizeBookIdentity(title);
+  final expectedAuthor = _normalizeBookIdentity(author);
+  source_api.SearchResult? best;
+  var bestScore = -1;
+  for (final result in results) {
+    final candidateTitle = _normalizeBookIdentity(result.name);
+    if (candidateTitle.isEmpty || expectedTitle.isEmpty) continue;
+    var score = candidateTitle == expectedTitle
+        ? 10
+        : (candidateTitle.contains(expectedTitle) ||
+              expectedTitle.contains(candidateTitle))
+        ? 4
+        : -1;
+    if (score < 0) continue;
+    final candidateAuthor = _normalizeBookIdentity(result.author);
+    if (expectedAuthor.isNotEmpty && candidateAuthor.isNotEmpty) {
+      if (candidateAuthor == expectedAuthor) {
+        score += 4;
+      } else if (!candidateAuthor.contains(expectedAuthor) &&
+          !expectedAuthor.contains(candidateAuthor)) {
+        score -= 3;
+      }
+    }
+    if (result.coverUrl.trim().isNotEmpty) score += 2;
+    if (score > bestScore) {
+      bestScore = score;
+      best = result;
+    }
+  }
+  return bestScore >= 4 ? best : null;
+}
+
+String _normalizeBookIdentity(String value) => value
+    .trim()
+    .toLowerCase()
+    .replaceAll(RegExp(r'[\s\p{P}\p{S}_]+', unicode: true), '');
 
 String deriveLocalBookTitle({
   required String metaTitle,

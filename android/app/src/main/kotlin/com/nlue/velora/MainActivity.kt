@@ -95,7 +95,7 @@ class MainActivity : FlutterActivity() {
 		val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
 			addCategory(Intent.CATEGORY_OPENABLE)
 			type = "*/*"
-			putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "text/*", "application/epub+zip", "application/x-mobipocket-ebook", "application/vnd.amazon.ebook", "application/octet-stream"))
+			putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "text/*", "text/markdown", "application/epub+zip", "application/x-mobipocket-ebook", "application/vnd.amazon.ebook", "application/vnd.comicbook+zip", "application/zip", "audio/*", "application/octet-stream"))
 			addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
 		}
 		startActivityForResult(intent, openDocumentRequest)

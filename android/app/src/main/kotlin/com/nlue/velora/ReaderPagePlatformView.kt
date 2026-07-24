@@ -461,10 +461,11 @@ object ReaderStaticLayoutPager {
 			color = textColor
 			textSize = fontSizePx
 			typeface = when (fontFamilyKey) {
-				"notoSans" -> Typeface.SANS_SERIF
-				"literata" -> Typeface.SERIF
-				"merriweather" -> Typeface.SERIF
-				"lora" -> Typeface.SERIF
+				"notoSans", "Noto Sans SC" -> Typeface.create("Noto Sans SC", Typeface.NORMAL)
+				"notoSerif", "Noto Serif SC" -> Typeface.create("Noto Serif SC", Typeface.NORMAL)
+				"literata", "Literata" -> Typeface.create("Literata", Typeface.NORMAL)
+				"merriweather", "Merriweather" -> Typeface.create("Merriweather", Typeface.NORMAL)
+				"lora", "Lora" -> Typeface.create("Lora", Typeface.NORMAL)
 				else -> Typeface.SERIF
 			}
 			isLinearText = true

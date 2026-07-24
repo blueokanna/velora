@@ -14,6 +14,7 @@ import '../../app_keys.dart';
 import '../../l10n/app_localizations.dart';
 import '../../services/document_file.dart';
 import '../../services/local_books.dart' as local_books;
+import '../../services/reader_fonts.dart';
 import '../../services/rss_source.dart';
 import '../../services/source_adapter.dart';
 import '../../src/rust/api/book_file.dart' as book_file;
@@ -31,7 +32,9 @@ import 'reader_bookmarks.dart';
 import 'reader_layout.dart';
 import 'reader_page_cache.dart';
 import 'reader_page_content.dart';
+import 'rich_reader_content.dart';
 import 'paginator.dart';
+import '../settings/reader_font_picker.dart';
 
 class ReaderPage extends ConsumerStatefulWidget {
   final String bookId;
@@ -42,6 +45,12 @@ class ReaderPage extends ConsumerStatefulWidget {
   @override
   ConsumerState<ReaderPage> createState() => _ReaderPageState();
 }
+
+@visibleForTesting
+Set<String> readerBookIdCandidates(String routedId, String? initialId) => {
+  if (routedId.isNotEmpty) routedId,
+  ?initialId,
+};
 
 class _ReaderChapter {
   final String title;
@@ -127,6 +136,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   rs.BookshelfEntry? _book;
   List<_ReaderChapter> _chapters = const [];
   String _chapterText = '';
+  MediaChapterContent? _mediaContent;
+  bool _richChapter = false;
   List<PageSlice> _pageSlices = const [];
   int _nextOffset = 0;
   int _chapterIndex = 0;
@@ -167,6 +178,22 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   Future<void> _load() async {
     try {
+      try {
+        final settings = ref.read(settingsProvider);
+        await ReaderFonts.prepare(
+          ref.read(sharedPreferencesProvider),
+          settings.readerFontFamily,
+        );
+      } catch (_) {
+        await ref
+            .read(settingsProvider.notifier)
+            .update(
+              (previous) => previous.copyWith(
+                readerFont: ReaderFontPreset.notoSerif,
+                readerFontFamily: 'Noto Serif SC',
+              ),
+            );
+      }
       _updateLoadingProgress(0.06, detail: widget.initialBook?.title ?? '');
       await ref.read(bookshelfProvider.notifier).refresh();
       final entries = ref.read(bookshelfProvider).value ?? const [];
@@ -199,11 +226,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   }
 
   rs.BookshelfEntry? _resolveBook(List<rs.BookshelfEntry> entries) {
-    final ids = <String>{
-      if (widget.bookId.isNotEmpty) widget.bookId,
-      if (widget.bookId.isNotEmpty) Uri.decodeComponent(widget.bookId),
-      if (widget.initialBook != null) widget.initialBook!.id,
-    };
+    final ids = readerBookIdCandidates(widget.bookId, widget.initialBook?.id);
     for (final id in ids) {
       final index = entries.indexWhere((book) => book.id == id);
       if (index >= 0) return entries[index];
@@ -417,7 +440,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     final book = _book;
     if (book == null) return;
     _rememberChapterCache(_chapterIndex);
-    final cached = _chapterCache[index];
+    final richBook = _isRichBook(book);
+    final cached = richBook ? null : _chapterCache[index];
     final targetPageIndex = _resolveRequestedPageIndex(
       initialPageIndex,
       cached,
@@ -430,6 +454,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       _pageSlices = const [];
       _nextOffset = 0;
       _hasMorePages = false;
+      _mediaContent = null;
+      _richChapter = false;
     });
     _updateLoadingProgress(
       _openingComplete ? 0.16 : 0.48,
@@ -448,14 +474,69 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       return;
     }
     final chapter = _chapters[index];
+    if (_isAudioBook(book)) {
+      _chapterText = chapter.title;
+      _mediaContent = MediaChapterContent(audioUrl: book.pathOrUrl);
+      _finishRichChapter();
+      return;
+    }
     final content = await _chapterContent(book, chapter);
     if (!mounted) return;
+    if (_isMarkdownBook(book)) {
+      _chapterText = content;
+      _finishRichChapter();
+      return;
+    }
+    final media =
+        MediaChapterContent.decode(content) ??
+        _mediaFromSourceType(book, content);
+    if (_isComicBook(book) || media != null) {
+      _chapterText = content;
+      _mediaContent = media ?? MediaChapterContent(images: [content]);
+      _finishRichChapter();
+      return;
+    }
     _chapterText = '${chapter.title}\n\n$content';
     _updateLoadingProgress(
       _openingComplete ? 0.34 : 0.6,
       detail: chapter.title,
     );
     await _repaginate(targetPageIndex: targetPageIndex);
+  }
+
+  void _finishRichChapter() {
+    final length = _chapterText.length;
+    setState(() {
+      _richChapter = true;
+      _pageSlices = [PageSlice(start: 0, end: length, text: _chapterText)];
+      _pageBaseIndex = 0;
+      _pageIndex = 0;
+      _nextOffset = length;
+      _hasMorePages = false;
+      _loadingChapter = false;
+      _loadingProgress = 1;
+      _openingComplete = true;
+    });
+    _scheduleSave();
+  }
+
+  MediaChapterContent? _mediaFromSourceType(
+    rs.BookshelfEntry book,
+    String content,
+  ) {
+    if (book.kind != 'online') return null;
+    final source = decodeBookSourceModelJson(book.sourceJson);
+    if (source == null || !const [1, 2].contains(source.bookSourceType)) {
+      return null;
+    }
+    final urls = RegExp(r'https?://[^\s<>"]+', caseSensitive: false)
+        .allMatches(content)
+        .map((match) => match.group(0)!)
+        .toList(growable: false);
+    if (source.bookSourceType == 1) {
+      return MediaChapterContent(audioUrl: urls.firstOrNull ?? content.trim());
+    }
+    return MediaChapterContent(images: urls.isEmpty ? [content.trim()] : urls);
   }
 
   Future<String> _chapterContent(
@@ -515,6 +596,28 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     )).trim().toLowerCase();
     return format == 'txt';
   }
+
+  String _bookFormat(rs.BookshelfEntry book) =>
+      book.kind.replaceAll('_uri', '').trim().toLowerCase();
+
+  bool _isMarkdownBook(rs.BookshelfEntry book) =>
+      const {'md', 'markdown'}.contains(_bookFormat(book));
+
+  bool _isComicBook(rs.BookshelfEntry book) =>
+      const {'cbz', 'zip'}.contains(_bookFormat(book));
+
+  bool _isAudioBook(rs.BookshelfEntry book) => const {
+    'mp3',
+    'm4a',
+    'aac',
+    'ogg',
+    'opus',
+    'wav',
+    'flac',
+  }.contains(_bookFormat(book));
+
+  bool _isRichBook(rs.BookshelfEntry book) =>
+      _isMarkdownBook(book) || _isComicBook(book) || _isAudioBook(book);
 
   Future<void> _repaginate({
     required int targetPageIndex,
@@ -666,8 +769,17 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     final safePadding = MediaQuery.paddingOf(context);
     final style = _readerTextStyle(context, settings);
     final colorScheme = Theme.of(context).colorScheme;
+    const nativeFamilies = {
+      'Noto Serif SC',
+      'Noto Sans SC',
+      'Literata',
+      'Merriweather',
+      'Lora',
+    };
     return ReaderLayoutSpec(
-      rendererKind: Platform.isAndroid
+      rendererKind:
+          Platform.isAndroid &&
+              nativeFamilies.contains(settings.readerFontFamily)
           ? ReaderRendererKind.androidStaticLayout
           : ReaderRendererKind.flutterSegments,
       maxWidth: (size.width - padding * 2)
@@ -678,7 +790,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
           .toDouble(),
       fontSize: style.fontSize ?? settings.fontScale.value,
       lineHeight: style.height ?? settings.lineHeight,
-      fontFamilyKey: settings.readerFont.name,
+      fontFamilyKey: settings.readerFontFamily,
       textColor: style.color ?? colorScheme.onSurface,
       backgroundColor: colorScheme.surface,
     );
@@ -717,6 +829,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         height: settings.lineHeight,
       ),
       settings.readerFont,
+      fontFamily: settings.readerFontFamily,
     );
   }
 
@@ -800,6 +913,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   }
 
   void _rememberChapterCache(int chapterIndex) {
+    if (_richChapter) return;
+    final book = _book;
+    if (book != null && _isRichBook(book)) return;
     if (_chapterText.isEmpty ||
         _pageSlices.isEmpty ||
         chapterIndex < 0 ||
@@ -821,6 +937,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   }
 
   Future<void> _prefetchAround(int chapterIndex) async {
+    final book = _book;
+    if (book != null && _isRichBook(book)) return;
     await _prefetchChapter(chapterIndex + 1);
   }
 
@@ -1195,19 +1313,39 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                                     preset,
                                   ),
                                 ),
-                                selected: settings.readerFont == preset,
+                                selected:
+                                    settings.readerFontFamily ==
+                                    _fontLabel(preset),
                                 onSelected: (_) {
                                   notifier.update(
-                                    (previous) =>
-                                        previous.copyWith(readerFont: preset),
+                                    (previous) => previous.copyWith(
+                                      readerFont: preset,
+                                      readerFontFamily: _fontLabel(preset),
+                                    ),
                                   );
-                                  unawaited(
-                                    _repaginate(targetPageIndex: _pageIndex),
-                                  );
+                                  unawaited(_refreshReaderLayout());
                                 },
                               ),
                             )
                             .toList(),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(context);
+                            await showReaderFontPicker(
+                              this.context,
+                              onChanged: _refreshReaderLayout,
+                            );
+                          },
+                          icon: const Icon(Icons.manage_search),
+                          label: const Text(
+                            '全部 Google Fonts / 导入本地字体',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 16),
                       Text(l10n.fontSize),
@@ -1234,7 +1372,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                           notifier.update(
                             (previous) => previous.copyWith(fontScale: scale),
                           );
-                          unawaited(_repaginate(targetPageIndex: _pageIndex));
+                          unawaited(_refreshReaderLayout());
                         },
                       ),
                       Text(l10n.lineHeight),
@@ -1254,7 +1392,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                           notifier.update(
                             (previous) => previous.copyWith(lineHeight: value),
                           );
-                          unawaited(_repaginate(targetPageIndex: _pageIndex));
+                          unawaited(_refreshReaderLayout());
                         },
                       ),
                       SwitchListTile(
@@ -1296,6 +1434,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         },
       ),
     );
+  }
+
+  Future<void> _refreshReaderLayout() async {
+    if (_richChapter) {
+      if (mounted) setState(() {});
+      return;
+    }
+    await _repaginate(targetPageIndex: _pageIndex);
   }
 
   String _effectLabel(BuildContext context, PageTurnEffect effect) {
@@ -1425,12 +1571,38 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     if (lower.endsWith('.epub')) return 'application/epub+zip';
     if (lower.endsWith('.mobi')) return 'application/x-mobipocket-ebook';
     if (lower.endsWith('.azw3')) return 'application/vnd.amazon.ebook';
+    if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
+      return 'text/markdown';
+    }
+    if (lower.endsWith('.cbz') || lower.endsWith('.zip')) {
+      return 'application/vnd.comicbook+zip';
+    }
+    for (final audio in const [
+      'mp3',
+      'm4a',
+      'aac',
+      'ogg',
+      'opus',
+      'wav',
+      'flac',
+    ]) {
+      if (lower.endsWith('.$audio')) return 'audio/$audio';
+    }
     final format = book.kind.replaceAll('_uri', '').trim().toLowerCase();
     return switch (format) {
       'txt' => 'text/plain',
       'epub' => 'application/epub+zip',
       'mobi' => 'application/x-mobipocket-ebook',
       'azw3' => 'application/vnd.amazon.ebook',
+      'md' || 'markdown' => 'text/markdown',
+      'cbz' || 'zip' => 'application/vnd.comicbook+zip',
+      'mp3' ||
+      'm4a' ||
+      'aac' ||
+      'ogg' ||
+      'opus' ||
+      'wav' ||
+      'flac' => 'audio/$format',
       _ => 'application/octet-stream',
     };
   }
@@ -1516,27 +1688,71 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       PageTurnEffect.scroll => PageTurnEffectType.scroll,
     };
 
-    final reader = PageTurnView(
-      key: _viewKey,
-      pageCount: _pageSlices.length,
-      initialPage: _pageIndex,
-      effect: effect,
-      onTapCenter: () => setState(() => _showOverlay = !_showOverlay),
-      onPageChanged: _onPageChanged,
-      onReachEnd: () => unawaited(_handleReachEnd()),
-      onReachStart: () => unawaited(_handleReachStart()),
-      pageBuilder: (context, index) => _ReaderPageView(
-        text: _pageSlices[index].text,
-        textStyle: readerTextStyle,
-        layoutSpec: layoutSpec,
-        padding: settings.pagePadding,
-        backgroundColor: colorScheme.surface,
-        footer: _ReaderFooter(
-          chapterTitle: _chapters[_chapterIndex].title,
-          pageLabel: _pageCountLabel(),
+    final Widget reader;
+    if (_richChapter && _isMarkdownBook(_book!)) {
+      reader = GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => setState(() => _showOverlay = !_showOverlay),
+        child: MarkdownReaderContent(
+          data: _chapterText,
+          textStyle: readerTextStyle,
+          documentPath: _book!.pathOrUrl,
+          padding: EdgeInsets.fromLTRB(
+            settings.pagePadding,
+            settings.pagePadding + MediaQuery.paddingOf(context).top,
+            settings.pagePadding,
+            settings.pagePadding + MediaQuery.paddingOf(context).bottom,
+          ),
         ),
-      ),
-    );
+      );
+    } else if (_richChapter && _mediaContent != null) {
+      final media = _mediaContent!;
+      final localAudioPath = _isAudioBook(_book!) ? _book!.pathOrUrl : null;
+      reader = GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => setState(() => _showOverlay = !_showOverlay),
+        child: ComicReaderContent(
+          images: media.images,
+          audioUrl: localAudioPath == null ? media.audioUrl : null,
+          localAudioPath: localAudioPath,
+          onPrevious: _chapterIndex > 0
+              ? () => _gotoChapter(_chapterIndex - 1)
+              : null,
+          onNext: _chapterIndex < _chapters.length - 1
+              ? () => _gotoChapter(_chapterIndex + 1)
+              : null,
+          chapterLabel: '${_chapterIndex + 1} / ${_chapters.length}',
+          padding: EdgeInsets.fromLTRB(
+            settings.pagePadding,
+            settings.pagePadding + MediaQuery.paddingOf(context).top,
+            settings.pagePadding,
+            settings.pagePadding,
+          ),
+        ),
+      );
+    } else {
+      reader = PageTurnView(
+        key: _viewKey,
+        pageCount: _pageSlices.length,
+        initialPage: _pageIndex,
+        effect: effect,
+        onTapCenter: () => setState(() => _showOverlay = !_showOverlay),
+        onPageChanged: _onPageChanged,
+        onReachEnd: () => unawaited(_handleReachEnd()),
+        onReachStart: () => unawaited(_handleReachStart()),
+        pageBuilder: (context, index) => _ReaderPageView(
+          text: _pageSlices[index].text,
+          textStyle: readerTextStyle,
+          layoutSpec: layoutSpec,
+          padding: settings.pagePadding,
+          backgroundColor: colorScheme.surface,
+          footer: _ReaderFooter(
+            chapterTitle: _chapters[_chapterIndex].title,
+            pageLabel: _pageCountLabel(),
+          ),
+        ),
+      );
+    }
 
     return PopScope(
       canPop: Navigator.of(context).canPop(),

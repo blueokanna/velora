@@ -60,6 +60,12 @@ jobs:
       - name: Fetch Flutter packages
         run: flutter pub get
 
+      - name: Analyze Cargokit build tool
+        working-directory: rust_builder/cargokit/build_tool
+        run: |
+          dart pub get
+          dart analyze --fatal-infos
+
       - name: Generate Rust bridge bindings
         run: flutter_rust_bridge_codegen generate --config-file flutter_rust_bridge.yaml
 
@@ -68,7 +74,7 @@ jobs:
 
       - name: Analyze and test Flutter application
         run: |
-          flutter analyze lib test integration_test
+          flutter analyze --fatal-infos lib test integration_test
           flutter test test
 
       - name: Require release signing secrets for tag builds

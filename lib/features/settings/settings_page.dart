@@ -6,6 +6,7 @@ import '../../app_keys.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/settings.dart';
 import '../../theme/app_theme.dart';
+import 'reader_font_picker.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -55,6 +56,12 @@ class SettingsPage extends ConsumerWidget {
                 title: l10n.languageSetting,
                 subtitle: _localeLabel(context, settings.locale),
                 onTap: () => _pickLocale(context, ref),
+              ),
+              _SettingsTile(
+                icon: Icons.font_download_outlined,
+                title: '阅读字体 / Reading fonts',
+                subtitle: settings.readerFontFamily,
+                onTap: () => showReaderFontPicker(context),
               ),
               const SizedBox(height: 18),
               _SettingsTile(

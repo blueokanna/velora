@@ -31,6 +31,7 @@ class BookSourceModel {
   final String searchAuthor;
   final String searchBookUrl;
   final String searchCover;
+  final String bookInfoInit;
   final String bookInfoName;
   final String bookInfoAuthor;
   final String bookInfoIntro;
@@ -71,6 +72,7 @@ class BookSourceModel {
     required this.searchAuthor,
     required this.searchBookUrl,
     this.searchCover = '',
+    this.bookInfoInit = '',
     required this.bookInfoName,
     required this.bookInfoAuthor,
     required this.bookInfoIntro,
@@ -147,6 +149,7 @@ class BookSourceModel {
       searchAuthor: exploreAuthor,
       searchBookUrl: exploreBookUrl,
       searchCover: exploreCover,
+      bookInfoInit: bookInfoInit,
       bookInfoName: bookInfoName,
       bookInfoAuthor: bookInfoAuthor,
       bookInfoIntro: bookInfoIntro,
@@ -189,6 +192,7 @@ class BookSourceModel {
     'search_author': searchAuthor,
     'search_book_url': searchBookUrl,
     'search_cover': searchCover,
+    'book_info_init': bookInfoInit,
     'book_info_name': bookInfoName,
     'book_info_author': bookInfoAuthor,
     'book_info_intro': bookInfoIntro,
@@ -227,6 +231,41 @@ class BookSourceModel {
         ? _mapField(j, 'ruleContent')
         : const <String, dynamic>{};
     final validation = _mapField(j, 'validation');
+    final searchList = _stringField(
+      j,
+      ['search_list'],
+      searchRules,
+      ['bookList'],
+    );
+    final searchName = _stringField(j, ['search_name'], searchRules, ['name']);
+    final searchAuthor = _stringField(
+      j,
+      ['search_author'],
+      searchRules,
+      ['author'],
+    );
+    final searchBookUrl = _stringField(
+      j,
+      ['search_book_url'],
+      searchRules,
+      ['bookUrl', 'url'],
+    );
+    final searchCover = _stringField(
+      j,
+      ['search_cover', 'coverUrl'],
+      searchRules,
+      ['coverUrl', 'cover'],
+    );
+
+    String exploreRule(
+      List<String> direct,
+      List<String> nested,
+      String fallback,
+    ) {
+      final value = _stringField(j, direct, exploreRules, nested);
+      return value.isEmpty ? fallback : value;
+    }
+
     return BookSourceModel(
       name: _stringField(j, ['name', 'bookSourceName', 'sourceName']),
       url: _stringField(j, ['url', 'bookSourceUrl', 'sourceUrl']),
@@ -246,47 +285,26 @@ class BookSourceModel {
         'enabledExplore',
       ], fallback: false),
       exploreUrl: _stringField(j, ['explore_url', 'exploreUrl']),
-      exploreList: _stringField(
-        j,
-        ['explore_list'],
-        exploreRules,
-        ['bookList'],
-      ),
-      exploreName: _stringField(j, ['explore_name'], exploreRules, ['name']),
-      exploreAuthor: _stringField(
-        j,
-        ['explore_author'],
-        exploreRules,
-        ['author'],
-      ),
-      exploreBookUrl: _stringField(
-        j,
+      exploreList: exploreRule(['explore_list'], ['bookList'], searchList),
+      exploreName: exploreRule(['explore_name'], ['name'], searchName),
+      exploreAuthor: exploreRule(['explore_author'], ['author'], searchAuthor),
+      exploreBookUrl: exploreRule(
         ['explore_book_url'],
-        exploreRules,
         ['bookUrl', 'url'],
+        searchBookUrl,
       ),
-      exploreCover: _stringField(
-        j,
+      exploreCover: exploreRule(
         ['explore_cover'],
-        exploreRules,
         ['coverUrl', 'cover'],
+        searchCover,
       ),
       searchUrl: _stringField(j, ['search_url', 'searchUrl']),
-      searchList: _stringField(j, ['search_list'], searchRules, ['bookList']),
-      searchName: _stringField(j, ['search_name'], searchRules, ['name']),
-      searchAuthor: _stringField(j, ['search_author'], searchRules, ['author']),
-      searchBookUrl: _stringField(
-        j,
-        ['search_book_url'],
-        searchRules,
-        ['bookUrl', 'url'],
-      ),
-      searchCover: _stringField(
-        j,
-        ['search_cover', 'coverUrl'],
-        searchRules,
-        ['coverUrl', 'cover'],
-      ),
+      searchList: searchList,
+      searchName: searchName,
+      searchAuthor: searchAuthor,
+      searchBookUrl: searchBookUrl,
+      searchCover: searchCover,
+      bookInfoInit: _stringField(j, ['book_info_init'], infoRules, ['init']),
       bookInfoName: _stringField(j, ['book_info_name'], infoRules, ['name']),
       bookInfoAuthor: _stringField(
         j,
@@ -360,6 +378,7 @@ class BookSourceModel {
     searchAuthor: searchAuthor,
     searchBookUrl: searchBookUrl,
     searchCover: searchCover,
+    bookInfoInit: bookInfoInit,
     bookInfoName: bookInfoName,
     bookInfoAuthor: bookInfoAuthor,
     bookInfoIntro: bookInfoIntro,
@@ -888,12 +907,23 @@ String _resolveExploreEntryUrl(String raw, {required String baseUrl}) {
   ]) {
     value = value.replaceAll(placeholder, '1');
   }
-  final base = Uri.tryParse(baseUrl);
-  if (base != null) {
-    final joined = base.resolve(value).toString();
-    if (joined.isNotEmpty) {
-      return joined;
+  value = value.replaceAllMapped(RegExp(r'%(?![0-9a-fA-F]{2})'), (_) => '%25');
+  final optionsIndex = value.indexOf(RegExp(r',\s*\{'));
+  final urlPart = optionsIndex < 0 ? value : value.substring(0, optionsIndex);
+  final options = optionsIndex < 0 ? '' : value.substring(optionsIndex);
+  final cleanBase = baseUrl.split('##').first.trim();
+  try {
+    final base = Uri.tryParse(cleanBase);
+    if (base != null) {
+      final joined = base.resolve(urlPart).toString();
+      if (joined.isNotEmpty) {
+        return '$joined$options';
+      }
     }
+  } on FormatException {
+    return value;
+  } on ArgumentError {
+    return value;
   }
   return value;
 }
@@ -1034,19 +1064,24 @@ String? normalizeSourceImportUrl(String? input) {
   while (value.isNotEmpty && '),;]}'.contains(value[value.length - 1])) {
     value = value.substring(0, value.length - 1).trimRight();
   }
+  value = value.replaceAllMapped(RegExp(r'%(?![0-9a-fA-F]{2})'), (_) => '%25');
   return value.isEmpty ? null : value;
 }
 
 String? decodeSourceImportUrl(String input) {
   try {
-    final uri = Uri.tryParse(input);
+    final trimmed = input.trim();
+    if (!trimmed.toLowerCase().startsWith('yuedu://')) return null;
+    final uri = Uri.tryParse(trimmed);
     if (uri == null) return null;
     final value =
         uri.queryParameters['src'] ??
         uri.queryParameters['url'] ??
         uri.queryParameters['source'];
     if (value == null || value.trim().isEmpty) return null;
-    return normalizeSourceImportUrl(Uri.decodeFull(value.trim()));
+    // queryParameters already decodes percent escapes. Decoding it again makes
+    // a legitimate literal '%' in the nested URL throw a FormatException.
+    return normalizeSourceImportUrl(value.trim());
   } on FormatException {
     return null;
   } on ArgumentError {

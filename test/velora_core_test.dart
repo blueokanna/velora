@@ -8,8 +8,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:charset/charset.dart';
 import 'package:velora/features/reader/paginator.dart';
 import 'package:velora/features/reader/reader_bookmarks.dart';
+import 'package:velora/features/reader/reader_page.dart'
+    show readerBookIdCandidates;
+import 'package:velora/features/reader/rich_reader_content.dart';
 import 'package:velora/services/local_books.dart'
-    show deriveLocalBookTitle, resolveStoredBookCover;
+    show
+        deriveLocalBookTitle,
+        resolveStoredBookCover,
+        selectBestSourceMetadataMatch;
 import 'package:velora/services/rss_source.dart';
 import 'package:velora/services/source_recommendations.dart';
 import 'package:velora/src/rust/api/book_source.dart' as bs;
@@ -63,10 +69,10 @@ Map<String, Object?> _rssSourceJson(
     'sourceName': name,
     'sourceUrl': url,
     'enabled': true,
-    if (ruleArticles != null) 'ruleArticles': ruleArticles,
-    if (ruleTitle != null) 'ruleTitle': ruleTitle,
-    if (ruleDescription != null) 'ruleDescription': ruleDescription,
-    if (ruleLink != null) 'ruleLink': ruleLink,
+    'ruleArticles': ?ruleArticles,
+    'ruleTitle': ?ruleTitle,
+    'ruleDescription': ?ruleDescription,
+    'ruleLink': ?ruleLink,
     if (ruleContent != null) 'ruleContent': {'content': ruleContent},
   };
 }
@@ -82,15 +88,11 @@ Future<BookSourceModel> _importedSource(
 }
 
 class _MockImportResponse {
-  const _MockImportResponse({
-    required this.body,
-    required this.contentType,
-    this.statusCode = HttpStatus.ok,
-  });
+  const _MockImportResponse({required this.body, required this.contentType});
 
   final List<int> body;
   final String contentType;
-  final int statusCode;
+  int get statusCode => HttpStatus.ok;
 }
 
 class _MockImportServer {
@@ -130,12 +132,7 @@ class _MockImportServer {
   }
 }
 
-class _PassthroughHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context);
-  }
-}
+class _PassthroughHttpOverrides extends HttpOverrides {}
 
 Future<T> _runWithRealHttp<T>(Future<T> Function() action) {
   return HttpOverrides.runWithHttpOverrides(
@@ -279,6 +276,50 @@ void main() {
     expect(source.bookInfoCover, '.cover img');
     expect(source.contentSelector, '#content');
   });
+
+  test('Legado explore rules fall back to search rules when omitted', () {
+    final source = BookSourceModel.fromJson({
+      'bookSourceName': '得奇小说网',
+      'bookSourceUrl': 'https://www.deqixs.com',
+      'enabled': true,
+      'enabledExplore': true,
+      'exploreUrl': '热门小说::/xiaoshuo/2-{{page}}.html',
+      'searchUrl': '/tag/?key={{key}}',
+      'ruleSearch': {
+        'bookList': 'class.item',
+        'name': 'tag.h3.0@tag.a.0@text',
+        'author': 'tag.p.1@tag.a.0@text##作者：',
+        'bookUrl': 'tag.a.0@href',
+        'coverUrl': 'tag.img.0@src',
+      },
+      'ruleExplore': <String, Object?>{},
+      'ruleBookInfo': {'init': r'$.data', 'name': r'$.title'},
+      'ruleToc': {
+        'chapterList': 'id.list.0@tag.a',
+        'chapterName': 'text',
+        'chapterUrl': 'href',
+      },
+      'ruleContent': {'content': 'class.con.0@tag.p@text'},
+    });
+
+    expect(source.supportsExploreRecommendations, isTrue);
+    expect(source.exploreList, 'class.item');
+    expect(source.exploreName, 'tag.h3.0@tag.a.0@text');
+    expect(source.exploreEntryUrls, [
+      'https://www.deqixs.com/xiaoshuo/2-1.html',
+    ]);
+    expect(source.bookInfoInit, r'$.data');
+    expect(jsonDecode(source.toJsonString())['book_info_init'], r'$.data');
+  });
+
+  test(
+    'Reader book ids containing a literal percent are not decoded twice',
+    () {
+      const id = r'local://C:\Books\100% ready.txt';
+
+      expect(readerBookIdCandidates(id, null), {id});
+    },
+  );
 
   test(
     'Book source validation and rule version survive import serialization',
@@ -824,6 +865,17 @@ void main() {
     );
   });
 
+  test('Source import helpers preserve nested urls with a literal percent', () {
+    final nested = Uri.encodeQueryComponent(
+      'https://example.com/source%name.json',
+    );
+
+    expect(
+      decodeSourceImportUrl('yuedu://booksource/importonline?src=$nested'),
+      'https://example.com/source%25name.json',
+    );
+  });
+
   test(
     'Source import response decoding keeps UTF-8 source payloads intact',
     () {
@@ -1006,6 +1058,33 @@ void main() {
     );
   });
 
+  test('Imported source cover matching prefers exact title and author', () {
+    const results = [
+      bs.SearchResult(
+        name: '测试小说外传',
+        author: '其他作者',
+        bookUrl: 'https://example.com/wrong',
+        coverUrl: 'https://example.com/wrong.jpg',
+        sourceName: '测试源',
+      ),
+      bs.SearchResult(
+        name: '测试小说',
+        author: '目标作者',
+        bookUrl: 'https://example.com/right',
+        coverUrl: 'https://example.com/right.jpg',
+        sourceName: '测试源',
+      ),
+    ];
+
+    final match = selectBestSourceMetadataMatch(
+      results,
+      title: '测试小说',
+      author: '目标作者',
+    );
+
+    expect(match?.bookUrl, 'https://example.com/right');
+  });
+
   test('SettingsNotifier persists core reading settings', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
@@ -1017,6 +1096,7 @@ void main() {
         flavor: ThemeFlavor.amoled,
         pageTurnEffect: PageTurnEffect.curl,
         readerFont: ReaderFontPreset.lora,
+        readerFontFamily: 'Source Han Serif SC',
         lineHeight: 1.9,
       ),
     );
@@ -1026,7 +1106,54 @@ void main() {
     expect(reloaded.state.flavor, ThemeFlavor.amoled);
     expect(reloaded.state.pageTurnEffect, PageTurnEffect.curl);
     expect(reloaded.state.readerFont, ReaderFontPreset.lora);
+    expect(reloaded.state.readerFontFamily, 'Source Han Serif SC');
     expect(reloaded.state.lineHeight, 1.9);
+  });
+
+  test('media chapter payload keeps comic pages and narration together', () {
+    final payload = MediaChapterContent.decode(
+      '$mediaChapterPrefix${jsonEncode({
+        'images': ['https://example.com/1.jpg', 'data:image/png;base64,AA=='],
+        'audio': 'https://example.com/chapter.mp3',
+        'text': '旁白',
+      })}',
+    );
+
+    expect(payload, isNotNull);
+    expect(payload!.images, hasLength(2));
+    expect(payload.hasImages, isTrue);
+    expect(payload.hasAudio, isTrue);
+    expect(payload.text, '旁白');
+  });
+
+  testWidgets('Markdown reader builds inline and block LaTeX nodes', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 420,
+            height: 720,
+            child: MarkdownReaderContent(
+              data: '# Algebra\nInline: \$x^2\$\n\n\$\$\n\\int_0^1 x dx\n\$\$',
+              textStyle: TextStyle(fontSize: 18, color: Colors.black),
+              documentPath: 'notes.md',
+              padding: EdgeInsets.all(16),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Algebra'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget.runtimeType.toString() == 'Math',
+      ),
+      findsNWidgets(2),
+    );
   });
 
   test('ReaderBookmarksStore adds and removes bookmarks', () async {

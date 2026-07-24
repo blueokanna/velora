@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Cursor, Read, Write};
@@ -244,6 +245,7 @@ const TXT_ENCODING_SAMPLE_BYTES: u64 = 256 * 1024;
 const TXT_SPARSE_ANCHOR_BYTES: u64 = 64 * 1024;
 const TXT_MMAP_GRANULARITY: u64 = 64 * 1024;
 const TXT_INDEX_CACHE_SCHEMA_VERSION: u32 = 3;
+const MAX_COMIC_PAGE_BYTES: u64 = 64 * 1024 * 1024;
 
 fn default_hot_window_size() -> u32 {
     18
@@ -267,6 +269,12 @@ pub fn open_book_file(path: String) -> Result<BookMeta> {
     if extension(&path, &title).as_deref() == Some("txt") {
         return open_txt_file_meta(&p, path, title);
     }
+    if extension(&path, &title)
+        .as_deref()
+        .is_some_and(is_audio_extension)
+    {
+        return Ok(audio_book_meta(path, title, std::fs::metadata(&p)?.len()));
+    }
     let bytes = std::fs::read(&p)?;
     let locator = path;
     let parsed = parse_book(&locator, &title, &bytes)?;
@@ -281,8 +289,14 @@ pub fn open_book_bytes(locator: String, title: String, bytes: Vec<u8>) -> Result
 
 #[flutter_rust_bridge::frb(sync)]
 pub fn read_book_chapter_file(path: String, start: u64, end: u64) -> Result<String> {
-    if extension(&path, &path).as_deref() == Some("txt") {
-        return read_txt_chapter_file(Path::new(&path), start, end);
+    match extension(&path, &path).as_deref() {
+        Some("txt") => return read_txt_chapter_file(Path::new(&path), start, end),
+        Some("cbz" | "zip") => {
+            let file = File::open(&path).with_context(|| format!("无法打开漫画文件: {path}"))?;
+            let mut archive = ZipArchive::new(file).context("漫画压缩包结构无效")?;
+            return comic_entry_data_url(&mut archive, start as usize);
+        }
+        _ => {}
     }
     let bytes = std::fs::read(&path)?;
     read_book_chapter_bytes(path, String::new(), bytes, start, end)
@@ -369,12 +383,10 @@ pub fn write_txt_page_cache(
     let chapter_key = chapter_index.to_string();
     if entry.base_page_index == 0 && entry.start_offset == 0 {
         layout.chapters.insert(chapter_key.clone(), entry.clone());
-        layout
-            .hot_windows
-            .insert(
-                chapter_key,
-                build_hot_page_windows(&entry, layout.telemetry.adaptive_window_size as usize),
-            );
+        layout.hot_windows.insert(
+            chapter_key,
+            build_hot_page_windows(&entry, layout.telemetry.adaptive_window_size as usize),
+        );
     } else {
         merge_hot_window(layout, chapter_key, entry);
     }
@@ -420,7 +432,10 @@ pub fn read_txt_layout_telemetry(
     let Some(cache) = load_txt_index_cache(&path, size_bytes, modified)? else {
         return Ok(None);
     };
-    Ok(cache.layouts.get(&layout_key).map(|layout| layout.telemetry.clone()))
+    Ok(cache
+        .layouts
+        .get(&layout_key)
+        .map(|layout| layout.telemetry.clone()))
 }
 
 #[flutter_rust_bridge::frb(sync)]
@@ -431,10 +446,15 @@ pub fn read_book_chapter_bytes(
     start: u64,
     end: u64,
 ) -> Result<String> {
-    if extension(&locator, &title).as_deref() == Some("txt") {
+    let ext = extension(&locator, &title);
+    if ext.as_deref() == Some("txt") {
         if let Some(parsed) = cached_txt(&locator) {
             return Ok(read_text_range(&parsed.text, start, end));
         }
+    }
+    if matches!(ext.as_deref(), Some("cbz" | "zip")) {
+        let mut archive = ZipArchive::new(Cursor::new(bytes)).context("漫画压缩包结构无效")?;
+        return comic_entry_data_url(&mut archive, start as usize);
     }
     let parsed = parse_book(&locator, &title, &bytes)?;
     Ok(read_text_range(&parsed.text, start, end))
@@ -481,6 +501,9 @@ fn parse_book(locator: &str, title: &str, bytes: &[u8]) -> Result<ParsedBook> {
     let ext = extension(locator, title);
     match ext.as_deref() {
         Some("epub") => parse_epub(bytes, title),
+        Some("md") | Some("markdown") => Ok(parse_markdown(bytes, title)),
+        Some("cbz") | Some("zip") => parse_cbz(bytes, title),
+        Some(ext) if is_audio_extension(ext) => Ok(parse_audio(title, ext)),
         Some("mobi") | Some("azw") | Some("azw3") | Some("prc") => {
             parse_mobi(bytes, title, ext.as_deref().unwrap_or("mobi"))
         }
@@ -495,6 +518,312 @@ fn parse_book(locator: &str, title: &str, bytes: &[u8]) -> Result<ParsedBook> {
         }
         Some(other) => Err(anyhow!("暂不支持的文件格式: {other}")),
     }
+}
+
+fn is_audio_extension(ext: &str) -> bool {
+    matches!(ext, "mp3" | "m4a" | "aac" | "ogg" | "opus" | "wav" | "flac")
+}
+
+fn audio_book_meta(locator: String, title: String, size_bytes: u64) -> BookMeta {
+    let ext = extension(&locator, &title).unwrap_or_else(|| "audio".to_string());
+    BookMeta {
+        locator,
+        title: fallback_title("", &title),
+        author: String::new(),
+        format: ext,
+        encoding: "binary".to_string(),
+        size_bytes,
+        cover_data_url: None,
+        chapters: vec![BookChapter {
+            title: fallback_title("", &title),
+            start: 0,
+            end: 0,
+        }],
+    }
+}
+
+fn parse_audio(title: &str, format: &str) -> ParsedBook {
+    ParsedBook {
+        title: fallback_title("", title),
+        author: String::new(),
+        format: format.to_string(),
+        encoding: "binary".to_string(),
+        text: String::new(),
+        cover_data_url: None,
+        chapters: Some(vec![BookChapter {
+            title: fallback_title("", title),
+            start: 0,
+            end: 0,
+        }]),
+    }
+}
+
+fn parse_markdown(bytes: &[u8], title: &str) -> ParsedBook {
+    let encoding = detect_encoding(bytes);
+    let text = decode_bytes_with_encoding(encoding, bytes)
+        .trim_start_matches('\u{feff}')
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
+    let (front_title, author) = markdown_front_matter(&text);
+    let (heading_title, chapters) = markdown_chapters(&text);
+    ParsedBook {
+        title: front_title
+            .or(heading_title)
+            .unwrap_or_else(|| fallback_title("", title)),
+        author: author.unwrap_or_default(),
+        format: "markdown".to_string(),
+        encoding: encoding.name().to_string(),
+        text,
+        cover_data_url: None,
+        chapters: Some(chapters),
+    }
+}
+
+fn markdown_front_matter(text: &str) -> (Option<String>, Option<String>) {
+    if !text.starts_with("---\n") {
+        return (None, None);
+    }
+    let Some(end) = text[4..].find("\n---\n") else {
+        return (None, None);
+    };
+    let mut title = None;
+    let mut author = None;
+    for line in text[4..4 + end].lines() {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        let value = value.trim().trim_matches(['\'', '"']);
+        match key.trim().to_ascii_lowercase().as_str() {
+            "title" if !value.is_empty() => title = Some(value.to_string()),
+            "author" if !value.is_empty() => author = Some(value.to_string()),
+            _ => {}
+        }
+    }
+    (title, author)
+}
+
+fn markdown_chapters(text: &str) -> (Option<String>, Vec<BookChapter>) {
+    let mut headings = Vec::<(usize, String, usize)>::new();
+    let mut offset = 0usize;
+    let mut fence: Option<&str> = None;
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") {
+            fence = if fence == Some("```") {
+                None
+            } else if fence.is_none() {
+                Some("```")
+            } else {
+                fence
+            };
+        } else if trimmed.starts_with("~~~") {
+            fence = if fence == Some("~~~") {
+                None
+            } else if fence.is_none() {
+                Some("~~~")
+            } else {
+                fence
+            };
+        } else if fence.is_none() {
+            let hashes = trimmed.chars().take_while(|ch| *ch == '#').count();
+            if (1..=2).contains(&hashes)
+                && trimmed.chars().nth(hashes).is_some_and(char::is_whitespace)
+            {
+                let heading = trimmed[hashes..].trim().trim_end_matches('#').trim();
+                if !heading.is_empty() {
+                    headings.push((
+                        offset + (line.len() - trimmed.len()),
+                        heading.to_string(),
+                        hashes,
+                    ));
+                }
+            }
+        }
+        offset += line.len();
+    }
+    let document_title = headings
+        .iter()
+        .find(|(_, _, level)| *level == 1)
+        .map(|(_, heading, _)| heading.clone());
+    if headings.is_empty() {
+        return (
+            document_title.clone(),
+            vec![BookChapter {
+                title: document_title.clone().unwrap_or_else(|| "正文".to_string()),
+                start: 0,
+                end: text.len() as u64,
+            }],
+        );
+    }
+    let mut chapters = Vec::new();
+    if headings[0].0 > 0 && !text[..headings[0].0].trim().is_empty() {
+        chapters.push(BookChapter {
+            title: "前言".to_string(),
+            start: 0,
+            end: headings[0].0 as u64,
+        });
+    }
+    for (index, (start, heading, _)) in headings.iter().enumerate() {
+        chapters.push(BookChapter {
+            title: heading.clone(),
+            start: *start as u64,
+            end: headings
+                .get(index + 1)
+                .map(|(next, _, _)| *next)
+                .unwrap_or(text.len()) as u64,
+        });
+    }
+    (document_title, chapters)
+}
+
+fn parse_cbz(bytes: &[u8], title: &str) -> Result<ParsedBook> {
+    let mut archive = ZipArchive::new(Cursor::new(bytes)).context("漫画压缩包结构无效")?;
+    let mut images = Vec::<(usize, String)>::new();
+    for index in 0..archive.len() {
+        let file = archive.by_index(index)?;
+        if !file.is_dir() && is_comic_image(file.name()) {
+            if file.size() > MAX_COMIC_PAGE_BYTES {
+                return Err(anyhow!("漫画页超过 64MB 安全上限: {}", file.name()));
+            }
+            images.push((index, file.name().replace('\\', "/")));
+        }
+    }
+    if images.is_empty() {
+        return Err(anyhow!("压缩包中没有可阅读的漫画图片"));
+    }
+    images.sort_by(|left, right| natural_path_cmp(&left.1, &right.1));
+    let cover_data_url = {
+        let bytes = read_comic_entry(&mut archive, images[0].0)?;
+        if bytes.len() <= 2 * 1024 * 1024 {
+            Some(format!(
+                "data:{};base64,{}",
+                mime_from_path(&images[0].1),
+                BASE64.encode(bytes)
+            ))
+        } else {
+            None
+        }
+    };
+    let chapters = images
+        .iter()
+        .enumerate()
+        .map(|(page, (entry_index, name))| BookChapter {
+            title: Path::new(name)
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("第 {} 页", page + 1)),
+            start: *entry_index as u64,
+            end: (*entry_index + 1) as u64,
+        })
+        .collect();
+    Ok(ParsedBook {
+        title: fallback_title("", title),
+        author: String::new(),
+        format: "cbz".to_string(),
+        encoding: "binary".to_string(),
+        text: String::new(),
+        cover_data_url,
+        chapters: Some(chapters),
+    })
+}
+
+fn read_comic_entry<R: Read + std::io::Seek>(
+    archive: &mut ZipArchive<R>,
+    entry_index: usize,
+) -> Result<Vec<u8>> {
+    let mut file = archive.by_index(entry_index).context("漫画页索引无效")?;
+    if file.is_dir() || !is_comic_image(file.name()) {
+        return Err(anyhow!("压缩包条目不是受支持的漫画图片"));
+    }
+    if file.size() > MAX_COMIC_PAGE_BYTES {
+        return Err(anyhow!("漫画页超过 64MB 安全上限"));
+    }
+    let mut bytes = Vec::with_capacity(file.size().min(MAX_COMIC_PAGE_BYTES) as usize);
+    file.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+fn comic_entry_data_url<R: Read + std::io::Seek>(
+    archive: &mut ZipArchive<R>,
+    entry_index: usize,
+) -> Result<String> {
+    let path = archive
+        .by_index(entry_index)
+        .context("漫画页索引无效")?
+        .name()
+        .to_string();
+    let bytes = read_comic_entry(archive, entry_index)?;
+    Ok(format!(
+        "data:{};base64,{}",
+        mime_from_path(&path),
+        BASE64.encode(bytes)
+    ))
+}
+
+fn is_comic_image(path: &str) -> bool {
+    matches!(
+        Path::new(path)
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.to_ascii_lowercase())
+            .as_deref(),
+        Some("jpg" | "jpeg" | "png" | "webp" | "gif")
+    )
+}
+
+fn natural_path_cmp(left: &str, right: &str) -> Ordering {
+    let mut left_parts = natural_parts(left).into_iter();
+    let mut right_parts = natural_parts(right).into_iter();
+    loop {
+        match (left_parts.next(), right_parts.next()) {
+            (Some(NaturalPart::Number(a)), Some(NaturalPart::Number(b))) => match a.cmp(&b) {
+                Ordering::Equal => {}
+                order => return order,
+            },
+            (Some(NaturalPart::Text(a)), Some(NaturalPart::Text(b))) => match a.cmp(&b) {
+                Ordering::Equal => {}
+                order => return order,
+            },
+            (Some(NaturalPart::Number(_)), Some(NaturalPart::Text(_))) => return Ordering::Less,
+            (Some(NaturalPart::Text(_)), Some(NaturalPart::Number(_))) => return Ordering::Greater,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (None, None) => return left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()),
+        }
+    }
+}
+
+enum NaturalPart {
+    Number(u64),
+    Text(String),
+}
+
+fn natural_parts(value: &str) -> Vec<NaturalPart> {
+    let mut parts = Vec::new();
+    let mut buffer = String::new();
+    let mut numeric: Option<bool> = None;
+    for ch in value.chars() {
+        let is_numeric = ch.is_ascii_digit();
+        if numeric.is_some_and(|current| current != is_numeric) {
+            parts.push(if numeric == Some(true) {
+                NaturalPart::Number(buffer.parse().unwrap_or(u64::MAX))
+            } else {
+                NaturalPart::Text(buffer.to_ascii_lowercase())
+            });
+            buffer.clear();
+        }
+        numeric = Some(is_numeric);
+        buffer.push(ch);
+    }
+    if !buffer.is_empty() {
+        parts.push(if numeric == Some(true) {
+            NaturalPart::Number(buffer.parse().unwrap_or(u64::MAX))
+        } else {
+            NaturalPart::Text(buffer.to_ascii_lowercase())
+        });
+    }
+    parts
 }
 
 fn extension(locator: &str, title: &str) -> Option<String> {
@@ -708,7 +1037,8 @@ fn build_hot_page_windows(full: &TxtPageBreakCache, window_size: usize) -> Vec<T
     }
     push_hot_page_window(
         full,
-        full.last_page_index.min((full.page_ends.len().saturating_sub(1)) as u32) as usize,
+        full.last_page_index
+            .min((full.page_ends.len().saturating_sub(1)) as u32) as usize,
         clamped_window_size,
         &mut seen,
         &mut windows,
@@ -764,7 +1094,12 @@ fn merge_hot_window(layout: &mut TxtLayoutCache, chapter_key: String, entry: Txt
             || window.page_ends.len() != entry.page_ends.len()
     });
     windows.push(entry);
-    windows.sort_by_key(|window| (window.touched_at_millis.unwrap_or(0), window.last_page_index));
+    windows.sort_by_key(|window| {
+        (
+            window.touched_at_millis.unwrap_or(0),
+            window.last_page_index,
+        )
+    });
     let retention_limit = layout.telemetry.adaptive_retention_limit.max(4) as usize;
     if windows.len() > retention_limit {
         let keep_from = windows.len() - retention_limit;
@@ -872,7 +1207,12 @@ fn apply_layout_feedback(
     telemetry.updated_at_millis = modified_millis(Some(SystemTime::now()));
     retune_hot_window_policy(telemetry);
     if feedback.record_restore_event && feedback.used_hot_window {
-        touch_hot_window(layout, chapter_key, feedback.restored_first_page_index, feedback.restored_last_page_index);
+        touch_hot_window(
+            layout,
+            chapter_key,
+            feedback.restored_first_page_index,
+            feedback.restored_last_page_index,
+        );
     }
 }
 
@@ -971,7 +1311,12 @@ fn touch_hot_window(
             window.touched_at_millis = now;
         }
     }
-    windows.sort_by_key(|window| (window.touched_at_millis.unwrap_or(0), window.last_page_index));
+    windows.sort_by_key(|window| {
+        (
+            window.touched_at_millis.unwrap_or(0),
+            window.last_page_index,
+        )
+    });
     let retention_limit = layout.telemetry.adaptive_retention_limit.max(4) as usize;
     if windows.len() > retention_limit {
         let keep_from = windows.len() - retention_limit;
@@ -985,7 +1330,12 @@ fn txt_index_cache_candidates(path: &Path) -> Vec<PathBuf> {
     if let Some(parent) = path.parent() {
         candidates.push(parent.join(".velora_cache").join(&file_name));
     }
-    candidates.push(std::env::temp_dir().join("velora").join("txt_index").join(file_name));
+    candidates.push(
+        std::env::temp_dir()
+            .join("velora")
+            .join("txt_index")
+            .join(file_name),
+    );
     candidates
 }
 
@@ -1027,7 +1377,11 @@ fn store_txt_file_info(
     }
 }
 
-fn cached_txt_file_encoding(path: &Path, size_bytes: u64, modified: Option<SystemTime>) -> Option<&'static Encoding> {
+fn cached_txt_file_encoding(
+    path: &Path,
+    size_bytes: u64,
+    modified: Option<SystemTime>,
+) -> Option<&'static Encoding> {
     let key = path.to_str()?;
     TXT_FILE_INFO_CACHE.lock().ok().and_then(|cache| {
         cache.get(key).and_then(|info| {
@@ -1128,10 +1482,7 @@ fn split_detected_chapters(
 ) -> Vec<BookChapter> {
     let mut chapters = Vec::new();
     for (index, (start, title)) in hits.iter().enumerate() {
-        let end = hits
-            .get(index + 1)
-            .map(|next| next.0)
-            .unwrap_or(size_bytes);
+        let end = hits.get(index + 1).map(|next| next.0).unwrap_or(size_bytes);
         if end <= *start {
             continue;
         }
@@ -1315,7 +1666,10 @@ fn score_decoded_text(text: &str, had_errors: bool, encoding: &'static Encoding)
             _ if is_east_asian_text(ch) => {
                 cjk_count += 1;
                 printable_count += 1;
-                if matches!(ch, '的' | '一' | '是' | '了' | '我' | '你' | '他' | '章' | '第' | '个') {
+                if matches!(
+                    ch,
+                    '的' | '一' | '是' | '了' | '我' | '你' | '他' | '章' | '第' | '个'
+                ) {
                     common_simplified_count += 1;
                 }
             }
@@ -1853,11 +2207,16 @@ mod tests {
     #[test]
     fn gb18030_text_prefers_cjk_decode_over_windows_1252() {
         let encoding = Encoding::for_label(b"gb18030").unwrap();
-        let (encoded, _, _) = encoding.encode("第一章 开始\n这是一个中文段落，用来验证编码探测。\n第二段依旧应该正常显示。\n");
+        let (encoded, _, _) = encoding.encode(
+            "第一章 开始\n这是一个中文段落，用来验证编码探测。\n第二段依旧应该正常显示。\n",
+        );
         let parsed = parse_txt(encoded.as_ref(), "sample.txt");
         assert!(parsed.text.contains("第一章 开始"));
         assert!(parsed.text.contains("中文段落"));
-        assert!(parsed.encoding.eq_ignore_ascii_case("gb18030") || parsed.encoding.eq_ignore_ascii_case("gbk"));
+        assert!(
+            parsed.encoding.eq_ignore_ascii_case("gb18030")
+                || parsed.encoding.eq_ignore_ascii_case("gbk")
+        );
     }
 
     #[test]

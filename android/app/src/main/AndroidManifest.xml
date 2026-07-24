@@ -30,6 +30,10 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:mimeType="text/plain"/>
                 <data android:mimeType="text/*"/>
+                <data android:mimeType="text/markdown"/>
+                <data android:mimeType="application/vnd.comicbook+zip"/>
+                <data android:mimeType="application/zip"/>
+                <data android:mimeType="audio/*"/>
                 <data android:scheme="content"/>
                 <data android:scheme="file"/>
             </intent-filter>

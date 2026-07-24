@@ -28,6 +28,7 @@ class AppSettings {
   final String locale;
   final PageTurnEffect pageTurnEffect;
   final ReaderFontPreset readerFont;
+  final String readerFontFamily;
   final ReaderFontScale fontScale;
   final double lineHeight;
   final double pagePadding;
@@ -40,6 +41,7 @@ class AppSettings {
     this.locale = 'system',
     this.pageTurnEffect = PageTurnEffect.cover,
     this.readerFont = ReaderFontPreset.notoSerif,
+    this.readerFontFamily = 'Noto Serif SC',
     this.fontScale = ReaderFontScale.normal,
     this.lineHeight = 1.7,
     this.pagePadding = 20,
@@ -53,6 +55,7 @@ class AppSettings {
     String? locale,
     PageTurnEffect? pageTurnEffect,
     ReaderFontPreset? readerFont,
+    String? readerFontFamily,
     ReaderFontScale? fontScale,
     double? lineHeight,
     double? pagePadding,
@@ -64,6 +67,7 @@ class AppSettings {
     locale: locale ?? this.locale,
     pageTurnEffect: pageTurnEffect ?? this.pageTurnEffect,
     readerFont: readerFont ?? this.readerFont,
+    readerFontFamily: readerFontFamily ?? this.readerFontFamily,
     fontScale: fontScale ?? this.fontScale,
     lineHeight: lineHeight ?? this.lineHeight,
     pagePadding: pagePadding ?? this.pagePadding,
@@ -85,6 +89,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
         .values[p.getInt('pageTurnEffect') ?? PageTurnEffect.cover.index],
     readerFont: ReaderFontPreset
         .values[p.getInt('readerFont') ?? ReaderFontPreset.notoSerif.index],
+    readerFontFamily: p.getString('readerFontFamily') ?? 'Noto Serif SC',
     fontScale: ReaderFontScale.values[p.getInt('fontScale') ?? 1],
     lineHeight: p.getDouble('lineHeight') ?? 1.7,
     pagePadding: p.getDouble('pagePadding') ?? 20,
@@ -100,6 +105,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     await _prefs.setString('locale', s.locale);
     await _prefs.setInt('pageTurnEffect', s.pageTurnEffect.index);
     await _prefs.setInt('readerFont', s.readerFont.index);
+    await _prefs.setString('readerFontFamily', s.readerFontFamily);
     await _prefs.setInt('fontScale', s.fontScale.index);
     await _prefs.setDouble('lineHeight', s.lineHeight);
     await _prefs.setDouble('pagePadding', s.pagePadding);

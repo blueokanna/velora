@@ -108,6 +108,69 @@ fn epub_book_preserves_first_chapter_text_range() {
     assert!(!chapter.contains("第二章正文"));
 }
 
+#[test]
+fn markdown_preserves_markup_latex_and_heading_chapters() {
+    let bytes = b"---\ntitle: Formula Notes\nauthor: Ada\n---\n# Algebra\nInline $x^2$\n\n$$\n\\int_0^1 x dx\n$$\n## Geometry\n![plot](plot.png)\n".to_vec();
+    let meta = open_book_bytes(
+        "notes.md".to_string(),
+        "notes.md".to_string(),
+        bytes.clone(),
+    )
+    .unwrap();
+    assert_eq!(meta.format, "markdown");
+    assert_eq!(meta.title, "Formula Notes");
+    assert_eq!(meta.author, "Ada");
+    assert_eq!(meta.chapters.len(), 3);
+    let algebra = read_book_chapter_bytes(
+        "notes.md".to_string(),
+        "notes.md".to_string(),
+        bytes,
+        meta.chapters[1].start,
+        meta.chapters[1].end,
+    )
+    .unwrap();
+    assert!(algebra.contains("$x^2$"));
+    assert!(algebra.contains("\\int_0^1"));
+    assert!(!algebra.contains("Geometry"));
+}
+
+#[test]
+fn cbz_pages_are_naturally_sorted_and_read_lazily() {
+    let bytes = make_cbz();
+    let meta = open_book_bytes(
+        "comic.cbz".to_string(),
+        "comic.cbz".to_string(),
+        bytes.clone(),
+    )
+    .unwrap();
+    assert_eq!(meta.format, "cbz");
+    assert_eq!(meta.chapters.len(), 2);
+    assert_eq!(meta.chapters[0].title, "page2");
+    assert_eq!(meta.chapters[1].title, "page10");
+    let page = read_book_chapter_bytes(
+        "comic.cbz".to_string(),
+        "comic.cbz".to_string(),
+        bytes,
+        meta.chapters[0].start,
+        meta.chapters[0].end,
+    )
+    .unwrap();
+    assert_eq!(page, "data:image/jpeg;base64,cGFnZS10d28=");
+}
+
+#[test]
+fn local_audio_is_exposed_as_one_playable_chapter() {
+    let meta = open_book_bytes(
+        "chapter.mp3".to_string(),
+        "chapter.mp3".to_string(),
+        vec![0x49, 0x44, 0x33],
+    )
+    .unwrap();
+    assert_eq!(meta.format, "mp3");
+    assert_eq!(meta.encoding, "binary");
+    assert_eq!(meta.chapters.len(), 1);
+}
+
 fn make_epub() -> Vec<u8> {
     let cursor = Cursor::new(Vec::new());
     let mut zip = zip::ZipWriter::new(cursor);
@@ -122,6 +185,17 @@ fn make_epub() -> Vec<u8> {
     zip.start_file("OPS/chapter2.xhtml", options).unwrap();
     zip.write_all("<html><body><h1>第2章 继续</h1><p>第二章正文。</p></body></html>".as_bytes())
         .unwrap();
+    zip.finish().unwrap().into_inner()
+}
+
+fn make_cbz() -> Vec<u8> {
+    let cursor = Cursor::new(Vec::new());
+    let mut zip = zip::ZipWriter::new(cursor);
+    let options = SimpleFileOptions::default();
+    zip.start_file("pages/page10.jpg", options).unwrap();
+    zip.write_all(b"page-ten").unwrap();
+    zip.start_file("pages/page2.jpg", options).unwrap();
+    zip.write_all(b"page-two").unwrap();
     zip.finish().unwrap().into_inner()
 }
 

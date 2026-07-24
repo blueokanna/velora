@@ -3,7 +3,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use encoding_rs::Encoding;
 use once_cell::sync::Lazy;
-use reqwest::Client;
+use reqwest::{Client, Method};
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
@@ -45,9 +45,34 @@ pub(crate) async fn fetch_once(
     request_timeout: Duration,
     cancellation: Option<&CancellationToken>,
 ) -> std::result::Result<FetchOnceResponse, FetchOnceError> {
-    let mut req = CLIENT.get(url).timeout(request_timeout);
+    fetch_once_with_options(url, headers, request_timeout, cancellation, "GET", None).await
+}
+
+pub(crate) async fn fetch_once_with_options(
+    url: &str,
+    headers: &[(String, String)],
+    request_timeout: Duration,
+    cancellation: Option<&CancellationToken>,
+    method: &str,
+    body: Option<&str>,
+) -> std::result::Result<FetchOnceResponse, FetchOnceError> {
+    let method =
+        Method::from_bytes(method.trim().to_ascii_uppercase().as_bytes()).unwrap_or(Method::GET);
+    let mut req = CLIENT.request(method, url).timeout(request_timeout);
     for (key, value) in headers {
         req = req.header(key.as_str(), value.as_str());
+    }
+    if let Some(body) = body {
+        if !headers
+            .iter()
+            .any(|(key, _)| key.eq_ignore_ascii_case("content-type"))
+        {
+            req = req.header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded; charset=UTF-8",
+            );
+        }
+        req = req.body(body.to_string());
     }
 
     let response = match cancellation {

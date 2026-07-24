@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
-use crate::api::http_source::{fetch_once, FetchOnceError, HttpResponse};
+use crate::api::http_source::{fetch_once_with_options, FetchOnceError, HttpResponse};
 use crate::api::txt_book::rt;
 
 const MAX_OBSERVATIONS_PER_SOURCE: usize = 200;
@@ -471,6 +471,8 @@ async fn fetch_for_source_async(
     operation: SourceOperation,
     url: &str,
     headers: &[(String, String)],
+    method: &str,
+    body: Option<&str>,
     rule_version: u32,
     cancellation: Option<&CancellationToken>,
 ) -> Result<FetchTrace, SourceFailureInfo> {
@@ -523,7 +525,16 @@ async fn fetch_for_source_async(
     let max_retries = 2u8;
 
     for attempt in 0..=max_retries {
-        match fetch_once(url, headers, request_timeout(operation), cancellation).await {
+        match fetch_once_with_options(
+            url,
+            headers,
+            request_timeout(operation),
+            cancellation,
+            method,
+            body,
+        )
+        .await
+        {
             Ok(result) if (200..300).contains(&result.response.status) => {
                 return Ok(FetchTrace {
                     response: result.response,
@@ -655,6 +666,7 @@ async fn fetch_for_source_async(
     unreachable!("请求重试循环必须返回")
 }
 
+#[cfg(test)]
 pub(crate) fn fetch_for_source(
     source_name: &str,
     source_url: &str,
@@ -670,6 +682,32 @@ pub(crate) fn fetch_for_source(
         operation,
         url,
         headers,
+        "GET",
+        None,
+        rule_version,
+        cancellation,
+    ))
+}
+
+pub(crate) fn fetch_for_source_request(
+    source_name: &str,
+    source_url: &str,
+    operation: SourceOperation,
+    url: &str,
+    headers: &[(String, String)],
+    method: &str,
+    body: Option<&str>,
+    rule_version: u32,
+    cancellation: Option<&CancellationToken>,
+) -> Result<FetchTrace, SourceFailureInfo> {
+    rt().block_on(fetch_for_source_async(
+        source_name,
+        source_url,
+        operation,
+        url,
+        headers,
+        method,
+        body,
         rule_version,
         cancellation,
     ))

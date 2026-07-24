@@ -15,6 +15,7 @@ import '../../services/local_books.dart';
 import '../../src/rust/api/book_file.dart' as book_file;
 import '../../src/rust/api/storage.dart' as rs;
 import '../../state/bookshelf.dart';
+import '../../state/sources.dart';
 import '../../theme/motion.dart';
 import '../../widgets/responsive.dart';
 import '../reader/book_meta_codec.dart';
@@ -106,7 +107,23 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
   Future<void> _importDesktopBook() async {
     final picked = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['txt', 'epub', 'mobi', 'azw3'],
+      allowedExtensions: [
+        'txt',
+        'epub',
+        'mobi',
+        'azw3',
+        'md',
+        'markdown',
+        'cbz',
+        'zip',
+        'mp3',
+        'm4a',
+        'aac',
+        'ogg',
+        'opus',
+        'wav',
+        'flac',
+      ],
     );
     if (picked == null || picked.files.isEmpty) return;
     final path = picked.files.first.path;
@@ -139,6 +156,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
           sourceJson: null,
           tocUrl: null,
         ),
+        sources: ref.read(sourcesProvider),
       ),
     );
     await ref.read(bookshelfProvider.notifier).upsert(entry);
@@ -199,6 +217,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
           sourceJson: null,
           tocUrl: null,
         ),
+        sources: ref.read(sourcesProvider),
       ),
     );
     await ref.read(bookshelfProvider.notifier).upsert(entry);
@@ -267,7 +286,11 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
       final updates = <rs.BookshelfEntry>[];
       for (final book in books.where(isManagedOfflineBook)) {
         try {
-          final refreshed = await refreshLocalBookEntry(book, force: force);
+          final refreshed = await refreshLocalBookEntry(
+            book,
+            force: force,
+            sources: ref.read(sourcesProvider),
+          );
           if (refreshed != null) {
             updates.add(refreshed);
           }
@@ -485,57 +508,62 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage>
   }
 
   Future<void> _editCoverUrl(rs.BookshelfEntry book) async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) {
-        final l10n = AppLocalizations.of(dialogContext);
-        final controller = TextEditingController(
-          text: _manualCoverSeed(book.cover),
-        );
-        String? errorText;
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text(l10n.setCoverUrl),
-              content: TextField(
-                controller: controller,
-                autofocus: true,
-                keyboardType: TextInputType.url,
-                decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  hintText: l10n.coverUrlHint,
-                  errorText: errorText,
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: Text(l10n.cancel),
-                ),
-                TextButton(
-                  onPressed: () =>
-                      Navigator.pop(dialogContext, _clearCoverSentinel),
-                  child: Text(l10n.clearCover),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final normalized = _normalizeCoverUrl(controller.text);
-                    if (normalized == null) {
-                      setDialogState(() {
-                        errorText = l10n.invalidCoverUrl;
-                      });
-                      return;
-                    }
-                    Navigator.pop(dialogContext, normalized);
-                  },
-                  child: Text(l10n.save),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    final controller = TextEditingController(
+      text: _manualCoverSeed(book.cover),
     );
+    String? result;
+    try {
+      result = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          final l10n = AppLocalizations.of(dialogContext);
+          String? errorText;
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: Text(l10n.setCoverUrl),
+                content: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType: TextInputType.url,
+                  decoration: InputDecoration(
+                    border: const OutlineInputBorder(),
+                    hintText: l10n.coverUrlHint,
+                    errorText: errorText,
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: Text(l10n.cancel),
+                  ),
+                  TextButton(
+                    onPressed: () =>
+                        Navigator.pop(dialogContext, _clearCoverSentinel),
+                    child: Text(l10n.clearCover),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      final normalized = _normalizeCoverUrl(controller.text);
+                      if (normalized == null) {
+                        setDialogState(() {
+                          errorText = l10n.invalidCoverUrl;
+                        });
+                        return;
+                      }
+                      Navigator.pop(dialogContext, normalized);
+                    },
+                    child: Text(l10n.save),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
+    }
     if (!mounted || result == null) return;
     final l10n = AppLocalizations.of(context);
     final nextCover = result == _clearCoverSentinel ? null : result;
@@ -1308,12 +1336,38 @@ String _shareMimeType(rs.BookshelfEntry book, String fileName) {
   if (lower.endsWith('.epub')) return 'application/epub+zip';
   if (lower.endsWith('.mobi')) return 'application/x-mobipocket-ebook';
   if (lower.endsWith('.azw3')) return 'application/vnd.amazon.ebook';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
+    return 'text/markdown';
+  }
+  if (lower.endsWith('.cbz') || lower.endsWith('.zip')) {
+    return 'application/vnd.comicbook+zip';
+  }
+  for (final audio in const [
+    'mp3',
+    'm4a',
+    'aac',
+    'ogg',
+    'opus',
+    'wav',
+    'flac',
+  ]) {
+    if (lower.endsWith('.$audio')) return 'audio/$audio';
+  }
   final format = _formatLabel(book.kind).toLowerCase();
   return switch (format) {
     'txt' => 'text/plain',
     'epub' => 'application/epub+zip',
     'mobi' => 'application/x-mobipocket-ebook',
     'azw3' => 'application/vnd.amazon.ebook',
+    'md' || 'markdown' => 'text/markdown',
+    'cbz' || 'zip' => 'application/vnd.comicbook+zip',
+    'mp3' ||
+    'm4a' ||
+    'aac' ||
+    'ogg' ||
+    'opus' ||
+    'wav' ||
+    'flac' => 'audio/$format',
     _ => 'application/octet-stream',
   };
 }
