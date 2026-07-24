@@ -23,6 +23,9 @@ class AppKeys {
     'reader.overlay.readerSettings',
   );
   static const readerOverlayToc = ValueKey('reader.overlay.toc');
+  static const readerOverlayBookmarks = ValueKey('reader.overlay.bookmarks');
+  static const readerOverlayNightMode = ValueKey('reader.overlay.nightMode');
+  static const readerOverlayShare = ValueKey('reader.overlay.share');
   static const readerLoading = ValueKey('reader.loading');
   static const readerLoadingProgress = ValueKey('reader.loading.progress');
   static const readerLoadingPercent = ValueKey('reader.loading.percent');

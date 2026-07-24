@@ -131,7 +131,14 @@ void main() {
     key.currentState!.debugPreview(PageTurnDirection.next, 0.61);
     await tester.pump();
 
-    expect(firstPreviewBuildCount, 3);
+    expect(firstPreviewBuildCount, 2);
+    expect(buildCount, firstPreviewBuildCount);
+
+    key.currentState!.debugResolvePreview(commit: true);
+    await tester.pump();
+
+    expect(key.currentState!.debugCurrentPage, 1);
+    expect(find.text('Cached 2'), findsOneWidget);
     expect(buildCount, firstPreviewBuildCount);
   });
 }

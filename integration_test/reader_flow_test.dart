@@ -70,11 +70,12 @@ void main() {
     await openSeededBook(tester, seeded);
     await showReaderOverlay(tester);
 
-    final readerSettingsButton = tester.widget<IconButton>(
-      find.byKey(AppKeys.readerOverlayReaderSettings),
-    );
-    expect(readerSettingsButton.onPressed, isNotNull);
-    readerSettingsButton.onPressed!.call();
+    expect(find.byKey(AppKeys.readerOverlayToc), findsOneWidget);
+    expect(find.byKey(AppKeys.readerOverlayBookmarks), findsOneWidget);
+    expect(find.byKey(AppKeys.readerOverlayNightMode), findsOneWidget);
+    expect(find.byKey(AppKeys.readerOverlayReaderSettings), findsOneWidget);
+
+    await tester.tap(find.byKey(AppKeys.readerOverlayReaderSettings));
     await tester.pumpAndSettle();
 
     expect(

@@ -562,6 +562,7 @@ class PageTurnView extends StatefulWidget {
   final int initialPage;
   final IndexedWidgetBuilder pageBuilder;
   final PageTurnEffectType effect;
+  final Object? contentRevision;
   final VoidCallback? onTapCenter;
   final ValueChanged<int>? onPageChanged;
   final VoidCallback? onReachStart;
@@ -573,6 +574,7 @@ class PageTurnView extends StatefulWidget {
     required this.pageBuilder,
     this.initialPage = 0,
     this.effect = PageTurnEffectType.cover,
+    this.contentRevision,
     this.onTapCenter,
     this.onPageChanged,
     this.onReachStart,
@@ -613,14 +615,26 @@ class PageTurnViewState extends State<PageTurnView> {
     _cachedTransitionNextIndex = null;
   }
 
+  void _settleTransitionCache({required bool commit, required int? target}) {
+    if (commit &&
+        target != null &&
+        _cachedTransitionNextIndex == target &&
+        _cachedTransitionNextPage != null) {
+      _cachedTransitionCurrentPage = _cachedTransitionNextPage;
+      _cachedTransitionCurrentIndex = target;
+    }
+    _cachedTransitionNextPage = null;
+    _cachedTransitionNextIndex = null;
+  }
+
   Widget _buildPage(BuildContext context, int index) {
-    return RepaintBoundary(child: widget.pageBuilder(context, index));
+    return KeyedSubtree(
+      key: ValueKey(index),
+      child: RepaintBoundary(child: widget.pageBuilder(context, index)),
+    );
   }
 
   Widget _currentPageFor(BuildContext context) {
-    if (!_hasTransitionPreview) {
-      return _buildPage(context, _current);
-    }
     if (_cachedTransitionCurrentPage == null ||
         _cachedTransitionCurrentIndex != _current) {
       _cachedTransitionCurrentPage = _buildPage(context, _current);
@@ -670,7 +684,7 @@ class PageTurnViewState extends State<PageTurnView> {
       _animationEnd = null;
       _edgeDragDirection = null;
       _commitAnimation = false;
-      _clearTransitionCache();
+      _settleTransitionCache(commit: commit, target: target);
     });
     if (commit && target != null) {
       widget.onPageChanged?.call(_current);
@@ -699,7 +713,7 @@ class PageTurnViewState extends State<PageTurnView> {
       _animationBegin = null;
       _animationEnd = null;
     }
-    if (oldWidget.pageBuilder != widget.pageBuilder ||
+    if (oldWidget.contentRevision != widget.contentRevision ||
         oldWidget.pageCount != widget.pageCount) {
       _clearTransitionCache();
     }
@@ -791,7 +805,7 @@ class PageTurnViewState extends State<PageTurnView> {
       _animationEnd = null;
       _edgeDragDirection = null;
       _commitAnimation = false;
-      _clearTransitionCache();
+      _settleTransitionCache(commit: commit, target: target);
     });
     if (commit && target != null) {
       widget.onPageChanged?.call(_current);

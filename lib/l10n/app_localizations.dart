@@ -99,6 +99,7 @@ class AppLocalizations {
   String get nextChapter => _t('nextChapter');
   String get tableOfContents => _t('tableOfContents');
   String get brightness => _t('brightness');
+  String get nightMode => _t('nightMode');
   String get searchHint => _t('searchHint');
   String get noResults => _t('noResults');
   String get selectedItems => _t('selectedItems');
@@ -209,6 +210,7 @@ final Map<String, Map<String, String>> _translations = {
     'nextChapter': 'Next chapter',
     'tableOfContents': 'Table of contents',
     'brightness': 'Brightness',
+    'nightMode': 'Night',
     'searchHint': 'Search for books, authors…',
     'noResults': 'No results yet',
     'selectedItems': 'selected',
@@ -308,6 +310,7 @@ final Map<String, Map<String, String>> _translations = {
     'nextChapter': '下一章',
     'tableOfContents': '目录',
     'brightness': '亮度',
+    'nightMode': '夜间',
     'searchHint': '搜索书名、作者…',
     'noResults': '暂无结果',
     'selectedItems': '已选',
@@ -403,6 +406,7 @@ final Map<String, Map<String, String>> _translations = {
     'nextChapter': '下一章',
     'tableOfContents': '目錄',
     'brightness': '亮度',
+    'nightMode': '夜間',
     'searchHint': '搜尋書名、作者…',
     'noResults': '暫無結果',
     'selectedItems': '已選',
@@ -494,6 +498,7 @@ final Map<String, Map<String, String>> _translations = {
     'nextChapter': '次章',
     'tableOfContents': '目次',
     'brightness': '明るさ',
+    'nightMode': '夜間',
     'searchHint': 'タイトル、著者で検索…',
     'noResults': '結果なし',
     'selectedItems': '件を選択',
@@ -585,6 +590,7 @@ final Map<String, Map<String, String>> _translations = {
     'nextChapter': '다음 장',
     'tableOfContents': '목차',
     'brightness': '밝기',
+    'nightMode': '야간',
     'searchHint': '도서, 저자 검색…',
     'noResults': '결과 없음',
     'selectedItems': '선택됨',
@@ -677,6 +683,7 @@ final Map<String, Map<String, String>> _translations = {
     'nextChapter': 'Nächstes Kapitel',
     'tableOfContents': 'Inhaltsverzeichnis',
     'brightness': 'Helligkeit',
+    'nightMode': 'Nacht',
     'searchHint': 'Nach Büchern oder Autoren suchen…',
     'noResults': 'Noch keine Ergebnisse',
     'selectedItems': 'ausgewählt',

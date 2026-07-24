@@ -769,19 +769,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     final safePadding = MediaQuery.paddingOf(context);
     final style = _readerTextStyle(context, settings);
     final colorScheme = Theme.of(context).colorScheme;
-    const nativeFamilies = {
-      'Noto Serif SC',
-      'Noto Sans SC',
-      'Literata',
-      'Merriweather',
-      'Lora',
-    };
     return ReaderLayoutSpec(
-      rendererKind:
-          Platform.isAndroid &&
-              nativeFamilies.contains(settings.readerFontFamily)
-          ? ReaderRendererKind.androidStaticLayout
-          : ReaderRendererKind.flutterSegments,
+      // Android platform views detach and reattach when they move between the
+      // two layers of a page-turn animation, which exposes a blank frame. Keep
+      // animated text in Flutter's scene so pagination and painting are stable.
+      rendererKind: ReaderRendererKind.flutterSegments,
       maxWidth: (size.width - padding * 2)
           .clamp(160.0, double.infinity)
           .toDouble(),
@@ -1465,8 +1457,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     };
   }
 
-  String _pageCountLabel() {
-    final current = _absolutePageIndex() + 1;
+  String _pageCountLabel([int? localPageIndex]) {
+    final current = _pageBaseIndex + (localPageIndex ?? _pageIndex) + 1;
     final total = _pageBaseIndex + _pageSlices.length;
     final suffix = (_hasMorePages || _pageBaseIndex > 0) ? '+' : '';
     return '$current / $total$suffix';
@@ -1736,6 +1728,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         pageCount: _pageSlices.length,
         initialPage: _pageIndex,
         effect: effect,
+        contentRevision: (
+          _pageSlices,
+          _chapterIndex,
+          layoutSpec.cacheKey,
+          layoutSpec.textColor.toARGB32(),
+          layoutSpec.backgroundColor.toARGB32(),
+          _pageBaseIndex,
+          _hasMorePages,
+        ),
         onTapCenter: () => setState(() => _showOverlay = !_showOverlay),
         onPageChanged: _onPageChanged,
         onReachEnd: () => unawaited(_handleReachEnd()),
@@ -1748,7 +1749,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
           backgroundColor: colorScheme.surface,
           footer: _ReaderFooter(
             chapterTitle: _chapters[_chapterIndex].title,
-            pageLabel: _pageCountLabel(),
+            pageLabel: _pageCountLabel(index),
           ),
         ),
       );
@@ -1787,8 +1788,26 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                           : () => _showDiagnostics(context),
                       onShare: (shareContext) =>
                           _shareCurrentBook(shareContext),
+                      onOpenAppSettings: () => context.push('/settings'),
                       onClose: () => setState(() => _showOverlay = false),
                       onShowReaderSettings: () => _showReaderSettings(context),
+                      isNightMode:
+                          Theme.of(context).brightness == Brightness.dark,
+                      onToggleNightMode: () {
+                        final isDark =
+                            Theme.of(context).brightness == Brightness.dark;
+                        unawaited(
+                          ref
+                              .read(settingsProvider.notifier)
+                              .update(
+                                (previous) => previous.copyWith(
+                                  themeMode: isDark
+                                      ? ThemeMode.light
+                                      : ThemeMode.dark,
+                                ),
+                              ),
+                        );
+                      },
                       onJumpToPage: (page) =>
                           _viewKey.currentState?.jumpTo(page),
                     )
@@ -2118,7 +2137,10 @@ class _ReaderOverlay extends StatelessWidget {
   final VoidCallback onShowBookmarks;
   final VoidCallback? onShowDiagnostics;
   final ValueChanged<BuildContext> onShare;
+  final VoidCallback onOpenAppSettings;
   final VoidCallback onShowReaderSettings;
+  final bool isNightMode;
+  final VoidCallback onToggleNightMode;
   final VoidCallback onClose;
   final ValueChanged<int> onJumpToPage;
 
@@ -2137,7 +2159,10 @@ class _ReaderOverlay extends StatelessWidget {
     required this.onShowBookmarks,
     this.onShowDiagnostics,
     required this.onShare,
+    required this.onOpenAppSettings,
     required this.onShowReaderSettings,
+    required this.isNightMode,
+    required this.onToggleNightMode,
     required this.onClose,
     required this.onJumpToPage,
   });
@@ -2182,6 +2207,26 @@ class _ReaderOverlay extends StatelessWidget {
                         ),
                       ],
                     ),
+                  ),
+                  if (onShowDiagnostics != null)
+                    IconButton(
+                      icon: const Icon(Icons.analytics_outlined),
+                      onPressed: onShowDiagnostics,
+                      tooltip: '阅读诊断',
+                    ),
+                  Builder(
+                    builder: (shareContext) => IconButton(
+                      key: AppKeys.readerOverlayShare,
+                      icon: const Icon(Icons.share_outlined),
+                      onPressed: () => onShare(shareContext),
+                      tooltip: l10n.shareBook,
+                    ),
+                  ),
+                  IconButton(
+                    key: AppKeys.readerOverlaySettings,
+                    icon: const Icon(Icons.settings_outlined),
+                    onPressed: onOpenAppSettings,
+                    tooltip: l10n.settings,
                   ),
                   IconButton(icon: const Icon(Icons.close), onPressed: onClose),
                 ],
@@ -2230,52 +2275,127 @@ class _ReaderOverlay extends StatelessWidget {
                     ],
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        IconButton.filledTonal(
+                        _ReaderOverlayAction(
                           key: AppKeys.readerOverlayToc,
-                          icon: const Icon(Icons.list),
-                          onPressed: onShowToc,
-                          tooltip: l10n.tableOfContents,
+                          icon: Icons.menu_book_outlined,
+                          label: l10n.tableOfContents,
+                          onTap: onShowToc,
                         ),
-                        IconButton.filledTonal(
-                          icon: const Icon(Icons.bookmarks_outlined),
-                          onPressed: onShowBookmarks,
-                          tooltip: l10n.bookmarks,
+                        _ReaderOverlayAction(
+                          key: AppKeys.readerOverlayBookmarks,
+                          icon: Icons.bookmarks_outlined,
+                          label: l10n.bookmarks,
+                          onTap: onShowBookmarks,
                         ),
-                        if (onShowDiagnostics != null)
-                          IconButton.filledTonal(
-                            icon: const Icon(Icons.analytics_outlined),
-                            onPressed: onShowDiagnostics,
-                            tooltip: '阅读诊断',
-                          ),
-                        Builder(
-                          builder: (shareContext) {
-                            return IconButton.filledTonal(
-                              icon: const Icon(Icons.share_outlined),
-                              onPressed: () => onShare(shareContext),
-                              tooltip: l10n.shareBook,
-                            );
-                          },
+                        _ReaderOverlayAction(
+                          key: AppKeys.readerOverlayNightMode,
+                          icon: isNightMode
+                              ? Icons.dark_mode
+                              : Icons.dark_mode_outlined,
+                          label: l10n.nightMode,
+                          tooltip: isNightMode
+                              ? l10n.themeLight
+                              : l10n.themeDark,
+                          selected: isNightMode,
+                          onTap: onToggleNightMode,
                         ),
-                        IconButton.filledTonal(
+                        _ReaderOverlayAction(
                           key: AppKeys.readerOverlayReaderSettings,
-                          icon: const Icon(Icons.tune),
-                          onPressed: onShowReaderSettings,
+                          icon: Icons.tune,
+                          label: l10n.settings,
                           tooltip: l10n.readerSettings,
+                          onTap: onShowReaderSettings,
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 4),
                 ],
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ReaderOverlayAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? tooltip;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ReaderOverlayAction({
+    super.key,
+    required this.icon,
+    required this.label,
+    this.tooltip,
+    this.selected = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final foreground = selected
+        ? colorScheme.onSecondaryContainer
+        : colorScheme.onSurfaceVariant;
+    return Expanded(
+      child: Tooltip(
+        message: tooltip ?? label,
+        child: Semantics(
+          button: true,
+          selected: selected,
+          label: label,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 68),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedContainer(
+                      duration: M3Motion.short4,
+                      curve: M3Motion.emphasizedDecelerate,
+                      width: 48,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? colorScheme.secondaryContainer
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(icon, size: 22, color: foreground),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: foreground,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
